@@ -1,0 +1,58 @@
+import type { PlatformUser } from "@/types";
+
+export const initialUsers: PlatformUser[] = [
+  {
+    id: 1,
+    name: "Admin Officer",
+    role: "Administrator",
+    department: "Cyber Intelligence Cell",
+    email: "admin@cic.gov.in",
+    status: "Active",
+    lastLogin: "16 Sep 2026, 15:12",
+  },
+  {
+    id: 2,
+    name: "Insp. A. Patil",
+    role: "Investigator",
+    department: "Pune Cyber Cell",
+    email: "a.patil@cic.gov.in",
+    status: "Active",
+    lastLogin: "16 Sep 2026, 14:48",
+  },
+  {
+    id: 3,
+    name: "PSI R. Singh",
+    role: "Investigator",
+    department: "Pune Cyber Cell",
+    email: "r.singh@cic.gov.in",
+    status: "Active",
+    lastLogin: "16 Sep 2026, 13:25",
+  },
+  {
+    id: 4,
+    name: "PSI K. Jadhav",
+    role: "Investigator",
+    department: "Pune Cyber Cell",
+    email: "k.jadhav@cic.gov.in",
+    status: "Active",
+    lastLogin: "15 Sep 2026, 18:40",
+  },
+  {
+    id: 5,
+    name: "S. Kulkarni",
+    role: "Analyst",
+    department: "Intelligence Analysis",
+    email: "s.kulkarni@cic.gov.in",
+    status: "Active",
+    lastLogin: "15 Sep 2026, 17:15",
+  },
+  {
+    id: 6,
+    name: "N. Deshmukh",
+    role: "Analyst",
+    department: "GIS Intelligence",
+    email: "n.deshmukh@cic.gov.in",
+    status: "Inactive",
+    lastLogin: "12 Sep 2026, 11:30",
+  },
+];

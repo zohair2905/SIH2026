@@ -1,0 +1,58 @@
+import type { GisLocation } from "@/types";
+
+export const gisLocations: GisLocation[] = [
+  {
+    name: "Kharadi ATM Cluster",
+    area: "Kharadi",
+    score: 91,
+    risk: "high",
+    cases: 24,
+    window: "14:00 – 18:00",
+    position: [18.5514, 73.9397],
+  },
+  {
+    name: "Hadapsar",
+    area: "Hadapsar",
+    score: 84,
+    risk: "high",
+    cases: 19,
+    window: "12:00 – 16:00",
+    position: [18.5089, 73.926],
+  },
+  {
+    name: "Viman Nagar",
+    area: "Viman Nagar",
+    score: 76,
+    risk: "medium",
+    cases: 15,
+    window: "16:00 – 20:00",
+    position: [18.5679, 73.9143],
+  },
+  {
+    name: "Wakad",
+    area: "Wakad",
+    score: 68,
+    risk: "medium",
+    cases: 11,
+    window: "13:00 – 17:00",
+    position: [18.5975, 73.7898],
+  },
+  {
+    name: "Shivaji Nagar",
+    area: "Shivaji Nagar",
+    score: 62,
+    risk: "medium",
+    cases: 9,
+    window: "15:00 – 19:00",
+    position: [18.5308, 73.8475],
+  },
+  {
+    name: "Aundh",
+    area: "Aundh",
+    score: 52,
+    risk: "low",
+    cases: 6,
+    window: "14:00 – 18:00",
+    position: [18.559, 73.807],
+  },
+];
