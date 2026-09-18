@@ -2,10 +2,11 @@ from __future__ import annotations
 
 from typing import Any
 
-from sqlalchemy import delete, func, select
+from sqlalchemy import func, select, update
 from sqlalchemy.orm import Session
 
-from app.db.models import Alert, Case, Prediction
+from app.db.models import Alert, Case, Prediction, PredictionRun, utcnow
+from app.services.config import PREDICTION_ID_PREFIX
 
 
 class CaseRepository:
@@ -69,35 +70,107 @@ class PredictionRepository:
     def __init__(self, session: Session) -> None:
         self.session = session
 
-    def replace_for_case(
-        self, case_id: str, transaction_id: str, predictions: list[dict[str, Any]]
-    ) -> list[Prediction]:
-        """Replace the case's top-K ranking with a fresh prediction run."""
-        self.session.execute(delete(Prediction).where(Prediction.case_id == case_id))
-        rows = [
-            Prediction(
-                case_id=case_id,
-                transaction_id=transaction_id,
-                atm_id=p["atm_id"],
-                rank=p["rank"],
-                risk_score=float(p["risk_score"]),
-                candidate_rank=p["candidate_rank"],
-                latitude=p.get("latitude"),
-                longitude=p.get("longitude"),
-                city=p.get("city"),
-                area_type=p.get("area_type"),
-                atm_status=p.get("atm_status"),
-                atm_density_1km=p.get("atm_density_1km"),
-                atm_withdrawal_count=p.get("atm_withdrawal_count"),
-                atm_recent_activity=p.get("atm_recent_activity"),
-                synthetic_location_data=bool(p.get("synthetic_location_data", True)),
-            )
-            for p in predictions
-        ]
-        self.session.add_all(rows)
+    def _next_seq(self, case_id: str) -> int:
+        max_seq = self.session.execute(
+            select(func.max(PredictionRun.seq)).where(PredictionRun.case_id == case_id)
+        ).scalar()
+        return (max_seq or 0) + 1
+
+    def create_run(
+        self,
+        *,
+        case_id: str,
+        transaction_id: str,
+        model_name: str,
+        model_version: str,
+        window_start: Any,
+        window_end: Any,
+        confidence: float,
+        predictions: list[dict[str, Any]],
+    ) -> PredictionRun:
+        """Persist one complete top-K run.
+
+        Re-prediction appends a new run and supersedes the previous one;
+        historical runs, prediction rows and alerts are never deleted.
+        """
+        seq = self._next_seq(case_id)
+        run = PredictionRun(
+            prediction_id=f"{PREDICTION_ID_PREFIX}-{case_id}-{seq}",
+            case_id=case_id,
+            transaction_id=transaction_id,
+            seq=seq,
+            model_name=model_name,
+            model_version=model_version,
+            window_start=window_start,
+            window_end=window_end,
+            confidence=confidence,
+            triggered_at=window_start,
+        )
+        self.session.add(run)
         self.session.flush()
+
+        for p in predictions:
+            self.session.add(
+                Prediction(
+                    run_id=run.id,
+                    case_id=case_id,
+                    transaction_id=transaction_id,
+                    atm_id=p["atm_id"],
+                    rank=p["rank"],
+                    risk_score=float(p["risk_score"]),
+                    risk_severity=p["risk_severity"],
+                    confidence=float(p["confidence"]),
+                    evidence=p["evidence"],
+                    candidate_rank=p["candidate_rank"],
+                    latitude=p.get("latitude"),
+                    longitude=p.get("longitude"),
+                    city=p.get("city"),
+                    area_type=p.get("area_type"),
+                    atm_status=p.get("atm_status"),
+                    atm_density_1km=p.get("atm_density_1km"),
+                    atm_withdrawal_count=p.get("atm_withdrawal_count"),
+                    atm_recent_activity=p.get("atm_recent_activity"),
+                    synthetic_location_data=bool(p.get("synthetic_location_data", True)),
+                )
+            )
+
+        previous = select(PredictionRun.id).where(
+            PredictionRun.case_id == case_id,
+            PredictionRun.superseded_at.is_(None),
+            PredictionRun.id != run.id,
+        )
+        self.session.execute(
+            update(PredictionRun)
+            .where(PredictionRun.id.in_(previous))
+            .values(superseded_at=utcnow())
+        )
         self.session.commit()
-        return rows
+        self.session.refresh(run)
+        return run
+
+    def get_run(self, prediction_id: str) -> PredictionRun | None:
+        return self.session.scalar(
+            select(PredictionRun).where(PredictionRun.prediction_id == prediction_id)
+        )
+
+    def current_run(self, case_id: str) -> PredictionRun | None:
+        return self.session.scalar(
+            select(PredictionRun)
+            .where(
+                PredictionRun.case_id == case_id,
+                PredictionRun.superseded_at.is_(None),
+            )
+            .order_by(PredictionRun.triggered_at.desc(), PredictionRun.id.desc())
+            .limit(1)
+        )
+
+    def list_runs(self, case_id: str | None = None) -> list[PredictionRun]:
+        stmt = select(PredictionRun).order_by(
+            PredictionRun.triggered_at.desc(), PredictionRun.id.desc()
+        )
+        if case_id:
+            stmt = stmt.where(PredictionRun.case_id == case_id)
+        return list(self.session.scalars(stmt))
 
 
 class AlertRepository:
@@ -163,15 +236,26 @@ class AnalyticsRepository:
             .select_from(Alert)
             .where(Alert.status.in_(["new", "acknowledged"]))
         )
-        total_pred = select(func.count()).select_from(Prediction)
-        avg_risk = select(func.avg(Prediction.risk_score)).select_from(Prediction)
+        current_runs = (
+            select(PredictionRun.id).where(PredictionRun.superseded_at.is_(None)).subquery()
+        )
+        scoped_pred = (
+            select(func.count())
+            .select_from(Prediction)
+            .join(current_runs, Prediction.run_id == current_runs.c.id)
+        )
+        avg_risk = (
+            select(func.avg(Prediction.risk_score))
+            .select_from(Prediction)
+            .join(current_runs, Prediction.run_id == current_runs.c.id)
+        )
         average_risk = self.session.execute(avg_risk).scalar()
         return {
             "cases": self.session.execute(total_case).scalar_one(),
             "open_cases": self.session.execute(open_case).scalar_one(),
             "alerts": self.session.execute(total_alert).scalar_one(),
             "active_alerts": self.session.execute(active_alert).scalar_one(),
-            "predictions": self.session.execute(total_pred).scalar_one(),
+            "predictions": self.session.execute(scoped_pred).scalar_one(),
             "average_prediction_risk": (
                 float(average_risk) if average_risk is not None else None
             ),
@@ -185,7 +269,9 @@ class AnalyticsRepository:
             func.max(Prediction.risk_score).label("risk_score"),
             func.min(Prediction.rank).label("best_rank"),
             func.count().label("observation_count"),
-        )
+        ).join(
+            PredictionRun, Prediction.run_id == PredictionRun.id
+        ).where(PredictionRun.superseded_at.is_(None))
         if case_id:
             stmt = stmt.where(Prediction.case_id == case_id)
         stmt = (
