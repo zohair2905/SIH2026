@@ -1,18 +1,24 @@
 from __future__ import annotations
-from collections import Counter
+
 import pandas as pd
-from app.database.app_db import AppDB
+
 from app.database.database import DataStore
+from app.db.repositories import AnalyticsRepository
+
 
 class AnalyticsService:
-    def __init__(self, app_db: AppDB, store: DataStore) -> None:
-        self.app_db = app_db
+    def __init__(self, repository: AnalyticsRepository, store: DataStore) -> None:
+        self.repository = repository
         self.store = store
 
     def build(self) -> dict:
-        summary = self.app_db.analytics_summary()
-        predictions = pd.DataFrame(self.app_db.prediction_heatmap())
-        top_atms = predictions.head(10).to_dict(orient="records") if not predictions.empty else []
+        summary = self.repository.summary()
+        predictions = pd.DataFrame(self.repository.prediction_heatmap())
+        top_atms = (
+            predictions.head(10).to_dict(orient="records")
+            if not predictions.empty
+            else []
+        )
 
         tx = self.store.transactions().copy()
         tx_dist = []
