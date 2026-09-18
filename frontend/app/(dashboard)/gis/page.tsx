@@ -1,30 +1,58 @@
+"use client";
+
+import { useEffect, useState } from "react";
 import { LayoutDashboard as Dashboard, MapPin } from "lucide-react";
 
 import { PageHeading } from "@/components/layout/page-heading";
 import { RiskMap } from "@/components/gis/risk-map";
 import { Panel } from "@/components/ui/panel";
-import { gisLocations } from "@/mocks/gis";
-import type { GisLocation, SeverityLevel } from "@/types";
+import { getHeatmap } from "@/lib/api/heatmap";
+import type { GisLocation, HeatmapPoint, SeverityLevel } from "@/types";
 
 const riskColors: Record<SeverityLevel, string> = {
+  critical: "#8a1f1f",
   high: "#dc4545",
   medium: "#f39a18",
   low: "#21965f",
 };
 
 const riskLabels: Record<SeverityLevel, string> = {
+  critical: "Critical Risk",
   high: "High Risk",
   medium: "Medium Risk",
   low: "Low Risk",
 };
 
-const zoneSummary = {
-  total: gisLocations.length,
-  high: gisLocations.filter((l) => l.risk === "high").length,
-  medium: gisLocations.filter((l) => l.risk === "medium").length,
-  low: gisLocations.filter((l) => l.risk === "low").length,
-  cases: gisLocations.reduce((sum, l) => sum + l.cases, 0),
-};
+const timeFormat = new Intl.DateTimeFormat("en-GB", {
+  hour: "2-digit",
+  minute: "2-digit",
+  hour12: false,
+});
+
+function formatWindow(point: HeatmapPoint): string {
+  if (!point.window_start || !point.window_end) return "Next 24 Hours";
+  const start = new Date(point.window_start);
+  const end = new Date(point.window_end);
+  const valid =
+    !Number.isNaN(start.getTime()) && !Number.isNaN(end.getTime());
+  if (!valid) return "Next 24 Hours";
+  return `${timeFormat.format(start)} – ${timeFormat.format(end)}`;
+}
+
+function toGisLocation(point: HeatmapPoint): GisLocation {
+  return {
+    name: point.atm_id,
+    area: point.area_type ?? point.atm_id,
+    score: Math.round(point.risk_score * 100),
+    risk: point.severity,
+    cases: point.observation_count,
+    window: formatWindow(point),
+    position: [point.latitude, point.longitude],
+    confidence: point.confidence,
+    topFactors: point.top_factors.map((factor) => factor.label),
+    syntheticLocationData: point.synthetic_location_data,
+  };
+}
 
 function LegendDot({ risk }: { risk: SeverityLevel }) {
   return (
@@ -65,7 +93,33 @@ function LocationRow({ location }: { location: GisLocation }) {
 }
 
 export default function GisPage() {
-  const sortedLocations = [...gisLocations].sort((a, b) => b.score - a.score);
+  const [locations, setLocations] = useState<GisLocation[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [mocked, setMocked] = useState(false);
+
+  useEffect(() => {
+    let active = true;
+    getHeatmap().then((result) => {
+      if (!active) return;
+      setMocked(result.mocked);
+      setLocations(result.data.points.map(toGisLocation));
+      setLoading(false);
+    });
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  const sortedLocations = [...locations].sort((a, b) => b.score - a.score);
+
+  const zoneSummary = {
+    total: locations.length,
+    critical: locations.filter((l) => l.risk === "critical").length,
+    high: locations.filter((l) => l.risk === "high").length,
+    medium: locations.filter((l) => l.risk === "medium").length,
+    low: locations.filter((l) => l.risk === "low").length,
+    cases: locations.reduce((sum, l) => sum + l.cases, 0),
+  };
 
   return (
     <div className="space-y-6">
@@ -73,12 +127,20 @@ export default function GisPage() {
         title="GIS Intelligence"
         description="Geospatial risk mapping for proactive cybercrime prevention"
       >
-        <span>Map data last updated: 16 Sep 2026, 14:30</span>
+        {mocked && (
+          <span className="text-muted-foreground">
+            Showing offline sample data
+          </span>
+        )}
+        {!mocked && !loading && (
+          <span>Map data from live prediction runs</span>
+        )}
       </PageHeading>
 
       <div className="flex flex-wrap items-center gap-5 rounded-lg border border-border bg-card p-4">
         {[
           ["Coverage Area", "Pune City"],
+          ["Critical Risk Zones", zoneSummary.critical],
           ["High Risk Zones", zoneSummary.high],
           ["Medium Risk Zones", zoneSummary.medium],
           ["Low Risk Zones", zoneSummary.low],
@@ -104,7 +166,17 @@ export default function GisPage() {
           className="xl:col-span-2"
         >
           <div className="h-[480px] w-full rounded-md p-2">
-            <RiskMap locations={gisLocations} />
+            {loading ? (
+              <div className="flex size-full items-center justify-center text-sm text-muted-foreground">
+                Loading risk zones…
+              </div>
+            ) : locations.length === 0 ? (
+              <div className="flex size-full items-center justify-center text-sm text-muted-foreground">
+                No risk zones found for the current prediction run.
+              </div>
+            ) : (
+              <RiskMap locations={locations} />
+            )}
           </div>
           <div className="flex flex-wrap items-center gap-4 px-2 pt-2 text-xs text-muted-foreground">
             {(Object.keys(riskLabels) as SeverityLevel[]).map((risk) => (
@@ -117,9 +189,19 @@ export default function GisPage() {
 
         <Panel icon={Dashboard} title="Risk Locations" subtitle="Ranked by prediction score">
           <div className="p-3">
-            {sortedLocations.map((location) => (
-              <LocationRow key={location.name} location={location} />
-            ))}
+            {loading ? (
+              <div className="py-10 text-center text-sm text-muted-foreground">
+                Loading risk locations…
+              </div>
+            ) : locations.length === 0 ? (
+              <div className="py-10 text-center text-sm text-muted-foreground">
+                No risk locations found.
+              </div>
+            ) : (
+              sortedLocations.map((location) => (
+                <LocationRow key={location.name} location={location} />
+              ))
+            )}
           </div>
         </Panel>
       </div>

@@ -55,6 +55,8 @@
   --color-risk-med-bg: var(--risk-med-bg);
   --color-risk-low: var(--risk-low);
   --color-risk-low-bg: var(--risk-low-bg);
+  --color-risk-critical: var(--risk-critical);
+  --color-risk-critical-bg: var(--risk-critical-bg);
   --color-status-new: var(--status-new);
   --color-status-new-bg: var(--status-new-bg);
   --color-status-acknowledged: var(--status-acknowledged);
@@ -99,6 +101,8 @@
   --risk-med-bg: #fff3d6;
   --risk-low: #277a49;
   --risk-low-bg: #e5f5e9;
+  --risk-critical: #8a1f1f;
+  --risk-critical-bg: #f7dcdc;
   --status-new: #0966c2;
   --status-new-bg: #e7f1ff;
   --status-acknowledged: #1263a9;

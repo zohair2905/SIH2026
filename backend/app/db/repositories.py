@@ -6,7 +6,7 @@ from sqlalchemy import func, select, update
 from sqlalchemy.orm import Session
 
 from app.db.models import Alert, Case, Prediction, PredictionRun, utcnow
-from app.services.config import PREDICTION_ID_PREFIX
+from app.services.config import PREDICTION_ID_PREFIX, severity_for_score
 
 
 class CaseRepository:
@@ -262,30 +262,79 @@ class AnalyticsRepository:
         }
 
     def prediction_heatmap(self, case_id: str | None = None) -> list[dict[str, Any]]:
-        stmt = select(
-            Prediction.atm_id,
-            Prediction.latitude,
-            Prediction.longitude,
-            func.max(Prediction.risk_score).label("risk_score"),
-            func.min(Prediction.rank).label("best_rank"),
-            func.count().label("observation_count"),
-        ).join(
-            PredictionRun, Prediction.run_id == PredictionRun.id
-        ).where(PredictionRun.superseded_at.is_(None))
+        """Heatmap points aggregated across current (non-superseded) runs.
+
+        Each point is one ATM cluster (atm_id + coordinates) in the newest
+        current run. The point carries the highest-risk observation's score,
+        rank, confidence and stored evidence, plus the observation count from
+        the run that owns it. Historical/superseded runs never contribute.
+        """
+        ranked = (
+            select(
+                Prediction.atm_id,
+                Prediction.latitude,
+                Prediction.longitude,
+                Prediction.risk_score,
+                Prediction.rank.label("best_rank"),
+                Prediction.confidence,
+                Prediction.evidence,
+                Prediction.area_type,
+                Prediction.synthetic_location_data,
+                PredictionRun.window_start,
+                PredictionRun.window_end,
+                func.row_number()
+                .over(
+                    partition_by=(
+                        Prediction.atm_id,
+                        Prediction.latitude,
+                        Prediction.longitude,
+                    ),
+                    order_by=Prediction.risk_score.desc(),
+                )
+                .label("rn"),
+                func.count()
+                .over(
+                    partition_by=(
+                        Prediction.atm_id,
+                        Prediction.latitude,
+                        Prediction.longitude,
+                    )
+                )
+                .label("observation_count"),
+            )
+            .join(PredictionRun, Prediction.run_id == PredictionRun.id)
+            .where(PredictionRun.superseded_at.is_(None))
+        )
         if case_id:
-            stmt = stmt.where(Prediction.case_id == case_id)
-        stmt = (
-            stmt.group_by(Prediction.atm_id, Prediction.latitude, Prediction.longitude)
-            .order_by(func.max(Prediction.risk_score).desc())
+            ranked = ranked.where(Prediction.case_id == case_id)
+        ranked = ranked.subquery()
+
+        rows = self.session.execute(
+            select(ranked)
+            .where(ranked.c.rn == 1)
+            .order_by(ranked.c.risk_score.desc())
         )
         return [
             {
                 "atm_id": row.atm_id,
-                "latitude": row.latitude,
-                "longitude": row.longitude,
+                "latitude": float(row.latitude),
+                "longitude": float(row.longitude),
                 "risk_score": float(row.risk_score),
                 "best_rank": int(row.best_rank),
                 "observation_count": int(row.observation_count),
+                "severity": severity_for_score(float(row.risk_score)),
+                "confidence": float(row.confidence),
+                "top_factors": (row.evidence or {}).get("top_factors", []),
+                "area_type": row.area_type,
+                "window_start": (
+                    row.window_start.isoformat()
+                    if row.window_start is not None
+                    else None
+                ),
+                "window_end": (
+                    row.window_end.isoformat() if row.window_end is not None else None
+                ),
+                "synthetic_location_data": bool(row.synthetic_location_data),
             }
-            for row in self.session.execute(stmt)
+            for row in rows
         ]

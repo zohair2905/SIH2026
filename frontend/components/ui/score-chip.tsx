@@ -17,6 +17,7 @@ export function ScoreChip({
         level === "high" && "bg-risk-bg text-risk",
         level === "medium" && "bg-risk-med-bg text-risk-med",
         level === "low" && "bg-risk-low-bg text-risk-low",
+        level === "critical" && "bg-risk-critical-bg text-risk-critical",
         className
       )}
     >

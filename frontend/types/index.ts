@@ -1,4 +1,4 @@
-export type SeverityLevel = "high" | "medium" | "low";
+export type SeverityLevel = "critical" | "high" | "medium" | "low";
 
 export type ConfidenceLevel = "high" | "medium" | "low";
 
@@ -93,6 +93,36 @@ export interface GisLocation {
   cases: number;
   window: string;
   position: [number, number];
+  confidence?: number;
+  topFactors?: string[];
+  syntheticLocationData?: boolean;
+}
+
+export interface HeatmapEvidenceFactor {
+  feature: string;
+  value: number;
+  label: string;
+}
+
+export interface HeatmapPoint {
+  atm_id: string;
+  latitude: number;
+  longitude: number;
+  risk_score: number;
+  best_rank: number;
+  observation_count: number;
+  severity: SeverityLevel;
+  confidence: number;
+  top_factors: HeatmapEvidenceFactor[];
+  area_type: string | null;
+  window_start: string | null;
+  window_end: string | null;
+  synthetic_location_data: boolean;
+}
+
+export interface HeatmapResponse {
+  case_id: string | null;
+  points: HeatmapPoint[];
 }
 
 export interface RiskBarDatum {

@@ -1,7 +1,11 @@
 import { Badge } from "@/components/ui/badge";
 import type { SeverityLevel } from "@/types";
 
-const variantByLevel: Record<SeverityLevel, "severityHigh" | "severityMedium" | "severityLow"> = {
+const variantByLevel: Record<
+  SeverityLevel,
+  "severityHigh" | "severityMedium" | "severityLow" | "severityCritical"
+> = {
+  critical: "severityCritical",
   high: "severityHigh",
   medium: "severityMedium",
   low: "severityLow",

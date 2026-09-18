@@ -8,12 +8,14 @@ import "maplibre-gl/dist/maplibre-gl.css";
 import type { GisLocation, SeverityLevel } from "@/types";
 
 const riskColors: Record<SeverityLevel, string> = {
+  critical: "#8a1f1f",
   high: "#dc4545",
   medium: "#f39a18",
   low: "#21965f",
 };
 
 const zoneRadii: Record<SeverityLevel, number> = {
+  critical: 2.6,
   high: 2.2,
   medium: 1.6,
   low: 1.3,
@@ -67,6 +69,12 @@ function circlePolygon(
   };
 }
 
+// GisLocation.position is [latitude, longitude]; MapLibre and GeoJSON
+// expect [longitude, latitude].
+function toLngLat(position: [number, number]): [number, number] {
+  return [position[1], position[0]];
+}
+
 export function RiskMap({ locations }: { locations: GisLocation[] }) {
   const [popup, setPopup] = useState<GisLocation | null>(null);
 
@@ -74,7 +82,7 @@ export function RiskMap({ locations }: { locations: GisLocation[] }) {
     () =>
       locations.map((location) => ({
         feature: {
-          ...circlePolygon(location.position, zoneRadii[location.risk]),
+          ...circlePolygon(toLngLat(location.position), zoneRadii[location.risk]),
           properties: { risk: location.risk },
         },
         color: riskColors[location.risk],
@@ -110,6 +118,8 @@ export function RiskMap({ locations }: { locations: GisLocation[] }) {
             "fill-color": [
               "match",
               ["get", "risk"],
+              "critical",
+              riskColors.critical,
               "high",
               riskColors.high,
               "medium",
@@ -126,6 +136,8 @@ export function RiskMap({ locations }: { locations: GisLocation[] }) {
             "line-color": [
               "match",
               ["get", "risk"],
+              "critical",
+              riskColors.critical,
               "high",
               riskColors.high,
               "medium",
@@ -137,30 +149,33 @@ export function RiskMap({ locations }: { locations: GisLocation[] }) {
         />
       </Source>
 
-      {locations.map((location) => (
-        <Marker
-          key={location.name}
-          longitude={location.position[0]}
-          latitude={location.position[1]}
-          anchor="center"
-          onClick={(e) => {
-            e.originalEvent.stopPropagation();
-            setPopup(location);
-          }}
-        >
-          <div className="flex h-5 w-5 cursor-pointer items-center justify-center rounded-full border-2 border-white shadow">
-            <span
-              className="h-3 w-3 rounded-full"
-              style={{ backgroundColor: riskColors[location.risk] }}
-            />
-          </div>
-        </Marker>
-      ))}
+      {locations.map((location) => {
+        const lngLat = toLngLat(location.position);
+        return (
+          <Marker
+            key={location.name}
+            longitude={lngLat[0]}
+            latitude={lngLat[1]}
+            anchor="center"
+            onClick={(e) => {
+              e.originalEvent.stopPropagation();
+              setPopup(location);
+            }}
+          >
+            <div className="flex h-5 w-5 cursor-pointer items-center justify-center rounded-full border-2 border-white shadow">
+              <span
+                className="h-3 w-3 rounded-full"
+                style={{ backgroundColor: riskColors[location.risk] }}
+              />
+            </div>
+          </Marker>
+        );
+      })}
 
       {popup && (
         <Popup
-          longitude={popup.position[0]}
-          latitude={popup.position[1]}
+          longitude={toLngLat(popup.position)[0]}
+          latitude={toLngLat(popup.position)[1]}
           anchor="top"
           closeButton={true}
           onClose={() => setPopup(null)}
@@ -175,6 +190,21 @@ export function RiskMap({ locations }: { locations: GisLocation[] }) {
             </span>
             <span className="block">Nearby Cases: {popup.cases}</span>
             <span className="block">Prediction: {popup.window}</span>
+            {popup.confidence !== undefined && (
+              <span className="block">
+                Confidence: {Math.round(popup.confidence * 100)}%
+              </span>
+            )}
+            {popup.syntheticLocationData && (
+              <span className="block text-muted-foreground">
+                Synthetic coordinates
+              </span>
+            )}
+            {popup.topFactors && popup.topFactors.length > 0 && (
+              <span className="block text-muted-foreground">
+                Top factors: {popup.topFactors.join(", ")}
+              </span>
+            )}
           </div>
         </Popup>
       )}

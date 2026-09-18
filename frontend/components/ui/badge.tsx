@@ -21,6 +21,7 @@ const badgeVariants = cva(
         severityHigh: "bg-risk-bg text-risk",
         severityMedium: "bg-risk-med-bg text-risk-med",
         severityLow: "bg-risk-low-bg text-risk-low",
+        severityCritical: "bg-risk-critical-bg text-risk-critical",
         statusNew: "bg-status-new-bg text-status-new",
         statusAcknowledged: "bg-status-acknowledged-bg text-status-acknowledged",
         statusInvestigating:
