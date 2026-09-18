@@ -118,7 +118,7 @@ class PredictionRepository:
                     atm_id=p["atm_id"],
                     rank=p["rank"],
                     risk_score=float(p["risk_score"]),
-                    risk_severity=p["risk_severity"],
+                    risk_severity=p.get("risk_severity") or p.get("severity"),
                     confidence=float(p["confidence"]),
                     evidence=p["evidence"],
                     candidate_rank=p["candidate_rank"],

@@ -1,5 +1,7 @@
 from datetime import UTC, datetime
 
+import numpy as np
+import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
@@ -7,7 +9,14 @@ from app.db.models import PredictionRun
 from app.db.repositories import AnalyticsRepository, PredictionRepository
 from app.seeding import seed_demo
 from app.services.alert_service import create_prediction_alerts
-from app.services.config import MODEL_NAME, MODEL_VERSION, prediction_window
+from app.services.config import (
+    MODEL_FEATURES,
+    MODEL_FILE,
+    MODEL_NAME,
+    MODEL_VERSION,
+    prediction_window,
+)
+from app.services.model_service import ModelService
 
 
 def _five_items() -> list[dict]:
@@ -79,9 +88,72 @@ def test_get_prediction_run_endpoint(client: TestClient) -> None:
     assert client.get("/api/predictions/PRED-NO-SUCH-0").status_code == 404
 
 
-def test_case_predict_route_contract(client: TestClient) -> None:
+def test_case_predict_model_present_returns_prediction(
+    client: TestClient, session: Session, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Model present: POST predict succeeds with a real prediction response.
+
+    The model artifact is gitignored, so CI never ships it. To keep this
+    state tested everywhere, use the real artifact when it exists and else
+    substitute a deterministic in-memory model (no skipif, no dependence on
+    whether a local file happens to exist).
+    """
+    seed_demo.seed(session)
+    if not MODEL_FILE.exists():
+        importances = np.full(len(MODEL_FEATURES), 0.1 / len(MODEL_FEATURES))
+
+        def _predict(_self, features):
+            return np.linspace(0.75, 0.15, len(features))
+
+        monkeypatch.setattr(ModelService, "load", lambda _self: None)
+        monkeypatch.setattr(ModelService, "predict", _predict)
+        monkeypatch.setattr(
+            ModelService, "feature_importances", lambda _self: importances
+        )
+
     response = client.post("/api/cases/CASE-E2CAEBEA64/predict")
-    assert response.status_code == 503  # model artifact absent in test env
+    assert response.status_code == 200
+    body = response.json()
+    assert body["prediction_id"].startswith("PRED-CASE-E2CAEBEA64-")
+    assert body["model_name"] == MODEL_NAME
+    assert body["model_version"] == MODEL_VERSION
+    assert body["status"] == "completed"
+    assert len(body["locations"]) == 5
+    assert [loc["rank"] for loc in body["locations"]] == [1, 2, 3, 4, 5]
+    for location in body["locations"]:
+        assert 0.0 <= location["risk_score"] <= 1.0
+        assert location["severity"] in {"low", "medium", "high", "critical"}
+        assert 0.0 <= location["confidence"] <= 1.0
+        assert location["risk_score_percent"] == round(
+            location["risk_score"] * 100, 2
+        )
+        assert location["latitude"] is not None
+        assert location["longitude"] is not None
+        assert location["candidate_rank"] >= 1
+        assert location["evidence"]["heuristic"] is True
+    end = datetime.fromisoformat(body["window"]["end"])
+    start = datetime.fromisoformat(body["window"]["start"])
+    assert (end - start).total_seconds() == 24 * 3600
+
+
+def test_case_predict_model_absent_returns_503(
+    client: TestClient, session: Session, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Model absent: deterministic 503 with the model_unavailable contract.
+
+    Stubs model availability by making load() raise FileNotFoundError, rather
+    than relying on whether the (gitignored) artifact happens to exist. This
+    is the exact error the real route raises when the artifact is missing.
+    """
+    seed_demo.seed(session)
+
+    def _raise_missing_artifact(_self) -> None:
+        raise FileNotFoundError("Model artifact not found (test stub).")
+
+    monkeypatch.setattr(ModelService, "load", _raise_missing_artifact)
+
+    response = client.post("/api/cases/CASE-E2CAEBEA64/predict")
+    assert response.status_code == 503
     body = response.json()
     assert body["error"]["code"] in {"model_unavailable", "http_503"}
     assert body["request_id"]
