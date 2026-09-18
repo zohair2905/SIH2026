@@ -5,7 +5,14 @@ from typing import Any
 from sqlalchemy import func, select, update
 from sqlalchemy.orm import Session
 
-from app.db.models import Alert, Case, Prediction, PredictionRun, utcnow
+from app.db.models import (
+    Alert,
+    Case,
+    CaseNote,
+    Prediction,
+    PredictionRun,
+    utcnow,
+)
 from app.services.config import PREDICTION_ID_PREFIX, severity_for_score
 
 
@@ -64,6 +71,26 @@ class CaseRepository:
         if case is None or case.transaction_id is None:
             return []
         return [case.transaction_id]
+
+
+class CaseNoteRepository:
+    def __init__(self, session: Session) -> None:
+        self.session = session
+
+    def add(self, case_id: str, note: str, actor: str | None) -> CaseNote:
+        row = CaseNote(case_id=case_id, note=note, actor=actor)
+        self.session.add(row)
+        self.session.commit()
+        self.session.refresh(row)
+        return row
+
+    def list_for(self, case_id: str) -> list[CaseNote]:
+        stmt = (
+            select(CaseNote)
+            .where(CaseNote.case_id == case_id)
+            .order_by(CaseNote.created_at.desc(), CaseNote.id.desc())
+        )
+        return list(self.session.scalars(stmt))
 
 
 class PredictionRepository:
@@ -171,6 +198,64 @@ class PredictionRepository:
         if case_id:
             stmt = stmt.where(PredictionRun.case_id == case_id)
         return list(self.session.scalars(stmt))
+
+    # --- Investigation helpers ---------------------------------------------------
+
+    def current_top_prediction(self, case_id: str) -> dict[str, Any] | None:
+        """Return the highest-ranked prediction of the current run, or None."""
+        run = self.current_run(case_id)
+        if run is None:
+            return None
+        top = self.session.scalar(
+            select(Prediction)
+            .where(Prediction.run_id == run.id)
+            .order_by(Prediction.rank)
+            .limit(1)
+        )
+        if top is None:
+            return None
+        return {
+            "prediction_id": run.prediction_id,
+            "risk_score": float(top.risk_score),
+            "severity": severity_for_score(float(top.risk_score)),
+            "top_atm_id": top.atm_id,
+            "city": top.city,
+            "window_end": run.window_end.isoformat() if run.window_end else None,
+        }
+
+    def current_top_summaries(self) -> dict[str, dict[str, Any]]:
+        """Case-id → top-1 current-run prediction summary across all cases."""
+        rn = (
+            select(
+                Prediction.case_id,
+                Prediction.atm_id,
+                Prediction.risk_score,
+                Prediction.city,
+                PredictionRun.prediction_id,
+                PredictionRun.window_end,
+                func.row_number()
+                .over(
+                    partition_by=Prediction.case_id,
+                    order_by=(Prediction.rank.asc(), Prediction.risk_score.desc()),
+                )
+                .label("rn"),
+            )
+            .join(PredictionRun, Prediction.run_id == PredictionRun.id)
+            .where(PredictionRun.superseded_at.is_(None))
+            .subquery()
+        )
+        rows = self.session.execute(select(rn).where(rn.c.rn == 1)).all()
+        return {
+            row.case_id: {
+                "prediction_id": row.prediction_id,
+                "risk_score": float(row.risk_score),
+                "severity": severity_for_score(float(row.risk_score)),
+                "top_atm_id": row.atm_id,
+                "city": row.city,
+                "window_end": row.window_end.isoformat() if row.window_end else None,
+            }
+            for row in rows
+        }
 
 
 class AlertRepository:

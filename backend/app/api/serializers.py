@@ -9,7 +9,9 @@ def optional_float(value: Any) -> float | None:
     return None if value is None else float(value)
 
 
-def to_case_response(case: Case) -> dict[str, Any]:
+def to_case_response(
+    case: Case, prediction: dict[str, Any] | None = None
+) -> dict[str, Any]:
     return {
         "case_id": case.case_id,
         "transaction_id": case.transaction_id,
@@ -21,6 +23,28 @@ def to_case_response(case: Case) -> dict[str, Any]:
         "amount": float(case.amount) if case.amount is not None else None,
         "created_at": case.created_at.isoformat(),
         "updated_at": case.updated_at.isoformat(),
+        "prediction": (
+            {
+                "prediction_id": prediction["prediction_id"],
+                "risk_score": float(prediction["risk_score"]),
+                "severity": prediction["severity"],
+                "top_atm_id": prediction.get("top_atm_id"),
+                "city": prediction.get("city"),
+                "window_end": prediction.get("window_end"),
+            }
+            if prediction is not None
+            else None
+        ),
+    }
+
+
+def to_case_note_response(note: object) -> dict[str, Any]:
+    return {
+        "note_id": note.id,  # type: ignore[attr-defined]
+        "case_id": note.case_id,  # type: ignore[attr-defined]
+        "actor": note.actor,  # type: ignore[attr-defined]
+        "note": note.note,  # type: ignore[attr-defined]
+        "created_at": note.created_at.isoformat(),  # type: ignore[attr-defined]
     }
 
 

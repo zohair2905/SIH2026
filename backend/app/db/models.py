@@ -108,6 +108,9 @@ class Case(Base):
     entities: Mapped[list[Entity]] = relationship(  # type: ignore[name-defined]
         secondary="case_entities"
     )
+    notes: Mapped[list[CaseNote]] = relationship(  # type: ignore[name-defined]
+        back_populates="case", cascade="all, delete-orphan"
+    )
 
 
 class Complaint(Base):
@@ -130,6 +133,30 @@ class Complaint(Base):
     )
 
     case: Mapped[Case] = relationship(back_populates="complaints")
+
+
+class CaseNote(Base):
+    """Free-form investigator note attached to a case (blueprint FR 8 / M7).
+
+    Actor reflects the caller's identity where an authenticated session is
+    available; otherwise it stays null. Notes are append-only history, never
+    edited or deleted by the prototype.
+    """
+
+    __tablename__ = "case_notes"
+    __table_args__ = (Index("ix_case_notes_case_id", "case_id"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    case_id: Mapped[str] = mapped_column(
+        String(64), ForeignKey("cases.case_id", ondelete="CASCADE"), nullable=False
+    )
+    actor: Mapped[str | None] = mapped_column(String(100))
+    note: Mapped[str] = mapped_column(Text, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=utcnow
+    )
+
+    case: Mapped[Case] = relationship(back_populates="notes")
 
 
 class Entity(Base):

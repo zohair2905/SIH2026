@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 
 from app.api.predictions import _items_for_run, raise_http_from, RUN_NOTE
 from app.api.serializers import (
+    to_case_note_response,
     to_case_response,
     to_prediction_run_response,
     to_transaction_response,
@@ -17,9 +18,16 @@ from app.core.exceptions import (
     ValidationError,
 )
 from app.database.database import get_store
-from app.db.repositories import CaseRepository
+from app.db.repositories import CaseNoteRepository, CaseRepository, PredictionRepository
 from app.db.session import get_session
-from app.schemas.case import CaseCreate, CaseResponse, CaseStatusUpdate
+from app.schemas.case import (
+    CaseCreate,
+    CaseNetwork,
+    CaseNoteCreate,
+    CaseNoteResponse,
+    CaseResponse,
+    CaseStatusUpdate,
+)
 from app.schemas.prediction import PredictionRunResponse, TransactionResponse
 from app.services.case_service import CaseService
 from app.services.prediction_service import PredictionService
@@ -48,7 +56,11 @@ def create_case(request: CaseCreate, session: SessionDep):
 
 @router.get("", response_model=list[CaseResponse])
 def list_cases(session: SessionDep, status: str | None = None):
-    return [to_case_response(c) for c in CaseRepository(session).list(status)]
+    summaries = PredictionRepository(session).current_top_summaries()
+    return [
+        to_case_response(c, summaries.get(c.case_id))
+        for c in CaseRepository(session).list(status)
+    ]
 
 
 @router.post("/{case_id}/predict", response_model=PredictionRunResponse)
@@ -94,12 +106,57 @@ def case_transactions(case_id: str, session: SessionDep):
     return [to_transaction_response(row) for row in rows]
 
 
+@router.get("/{case_id}/network", response_model=CaseNetwork)
+def case_network(case_id: str, session: SessionDep):
+    """Relationship view built only from the case transaction's real records."""
+    case = CaseRepository(session).get(case_id)
+    if case is None:
+        raise HTTPException(status_code=404, detail="Case not found")
+
+    service = TransactionService(get_store())
+    if case.transaction_id is None:
+        from app.services.transaction_service import NETWORK_SEMANTICS
+
+        return {
+            "case_id": case.case_id,
+            "semantics": NETWORK_SEMANTICS,
+            "nodes": [],
+            "links": [],
+        }
+
+    network = service.network_for(case.transaction_id)
+    network["case_id"] = case.case_id
+    return network
+
+
+@router.get("/{case_id}/notes", response_model=list[CaseNoteResponse])
+def list_case_notes(case_id: str, session: SessionDep):
+    if CaseRepository(session).get(case_id) is None:
+        raise HTTPException(status_code=404, detail="Case not found")
+    return [
+        to_case_note_response(n)
+        for n in CaseNoteRepository(session).list_for(case_id)
+    ]
+
+
+@router.post("/{case_id}/notes", response_model=CaseNoteResponse)
+def create_case_note(
+    case_id: str, request: CaseNoteCreate, session: SessionDep
+):
+    if CaseRepository(session).get(case_id) is None:
+        raise HTTPException(status_code=404, detail="Case not found")
+    actor = request.actor.strip() if request.actor else None
+    note = CaseNoteRepository(session).add(case_id, request.note, actor or None)
+    return to_case_note_response(note)
+
+
 @router.get("/{case_id}", response_model=CaseResponse)
 def get_case(case_id: str, session: SessionDep):
     case = CaseRepository(session).get(case_id)
     if case is None:
         raise HTTPException(status_code=404, detail="Case not found")
-    return to_case_response(case)
+    prediction = PredictionRepository(session).current_top_prediction(case_id)
+    return to_case_response(case, prediction)
 
 
 @router.patch("/{case_id}", response_model=CaseResponse)
@@ -107,4 +164,5 @@ def update_case(case_id: str, request: CaseStatusUpdate, session: SessionDep):
     case = CaseRepository(session).update_status(case_id, request.status)
     if case is None:
         raise HTTPException(status_code=404, detail="Case not found")
-    return to_case_response(case)
+    prediction = PredictionRepository(session).current_top_prediction(case_id)
+    return to_case_response(case, prediction)

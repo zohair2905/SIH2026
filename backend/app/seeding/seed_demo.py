@@ -102,7 +102,7 @@ ALERT = {
 def _truncate(session: Session) -> None:
     session.execute(
         text(
-            "TRUNCATE complaints, case_entities, alerts, predictions, "
+            "TRUNCATE complaints, case_entities, case_notes, alerts, predictions, "
             "prediction_runs, entities, cases, users RESTART IDENTITY CASCADE"
         )
     )

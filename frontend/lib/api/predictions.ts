@@ -1,5 +1,5 @@
 import { apiGet, apiPost, withMock, type ApiResult } from "@/lib/api/common";
-import type { PredictionResult, PredictionRunInput } from "@/types";
+import type { PredictionResult, PredictionRun, PredictionRunInput } from "@/types";
 import { predictedLocations } from "@/mocks/dashboard";
 
 const mockResult: PredictionResult = {
@@ -12,17 +12,18 @@ const mockResult: PredictionResult = {
 export async function runPrediction(
   input: PredictionRunInput
 ): Promise<ApiResult<PredictionResult>> {
-  return withMock(
-    apiPost<PredictionResult>("/api/predictions", input),
-    mockResult
-  );
+  return withMock(apiPost<PredictionResult>("/api/predictions", input), mockResult);
 }
 
 export async function getPrediction(
   id: string
 ): Promise<ApiResult<PredictionResult>> {
-  return withMock(
-    apiGet<PredictionResult>(`/api/predictions/${id}`),
-    mockResult
-  );
+  return withMock(apiGet<PredictionResult>(`/api/predictions/${id}`), mockResult);
+}
+
+export async function getPredictionRun(
+  id: string
+): Promise<ApiResult<PredictionRun | null>> {
+  const result = await apiGet<PredictionRun>(`/api/predictions/${id}`);
+  return { data: result, mocked: result === null };
 }

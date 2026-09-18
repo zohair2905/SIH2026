@@ -6,23 +6,13 @@ export type CaseStatus =
   | "new"
   | "acknowledged"
   | "investigating"
-  | "resolved";
+  | "resolved"
+  | "open"
+  | "closed";
 
 export type AlertStatus = "unacknowledged" | "acknowledged" | "resolved";
 
 export type UserStatus = "Active" | "Inactive";
-
-export interface CaseSummary {
-  id: string;
-  date: string;
-  type: string;
-  location: string;
-  amount: string;
-  risk: SeverityLevel;
-  score: string;
-  status: CaseStatus;
-  officer: string;
-}
 
 export interface PredictedLocation {
   number?: number;
@@ -149,29 +139,119 @@ export interface DashboardKPIs {
   predictionsToday: number;
 }
 
-export interface CaseTransaction {
-  id: string;
-  date: string;
-  bank: string;
-  channel: string;
-  amount: string;
-  status: string;
+export interface CasePredictionSummary {
+  prediction_id: string;
+  risk_score: number;
+  severity: SeverityLevel;
+  top_atm_id: string | null;
+  city: string | null;
+  window_end: string | null;
 }
+
+export interface CaseRecord {
+  case_id: string;
+  transaction_id: string | null;
+  title: string;
+  description: string | null;
+  status: CaseStatus;
+  priority: SeverityLevel;
+  case_type: string;
+  amount: number | null;
+  created_at: string;
+  updated_at: string;
+  prediction: CasePredictionSummary | null;
+}
+
+export interface TransactionRecord {
+  transaction_id: string;
+  customer_id: string | null;
+  timestamp: string | null;
+  account_type: string | null;
+  transaction_type: string | null;
+  transaction_amount: number | null;
+  account_balance: number | null;
+  state: string | null;
+  credit_score: number | null;
+  has_loan: number | null;
+  kyc_status: string | null;
+  channel: string | null;
+}
+
+export type NetworkNodeKind = "transaction" | "customer" | "atm";
+
+export type NetworkRelation =
+  | "belongs_to"
+  | "same_customer"
+  | "candidate_withdrawal_point";
 
 export interface NetworkNode {
   id: string;
-  role: string;
-  risk: SeverityLevel;
+  kind: NetworkNodeKind;
+  label: string;
+  details: Record<string, unknown>;
+  risk: SeverityLevel | null;
 }
 
 export interface NetworkLink {
   source: string;
   target: string;
+  relation: NetworkRelation;
 }
 
 export interface CaseNetwork {
+  case_id: string;
+  semantics: string;
   nodes: NetworkNode[];
   links: NetworkLink[];
+}
+
+export interface CaseNote {
+  note_id: number;
+  case_id: string;
+  actor: string | null;
+  note: string;
+  created_at: string;
+}
+
+export interface PredictionLocation {
+  rank: number;
+  atm_id: string;
+  risk_score: number;
+  risk_score_percent: number;
+  confidence: number;
+  severity: SeverityLevel;
+  candidate_rank: number;
+  latitude: number | null;
+  longitude: number | null;
+  city: string | null;
+  area_type: string | null;
+  atm_status: string | null;
+  atm_density_1km: number | null;
+  atm_withdrawal_count: number | null;
+  atm_recent_activity: number | null;
+  synthetic_location_data: boolean;
+  evidence: {
+    top_factors?: string[];
+    driver?: string;
+    heuristic?: boolean;
+    [key: string]: unknown;
+  };
+}
+
+export interface PredictionRun {
+  prediction_id: string;
+  status: string;
+  case_id: string;
+  transaction_id: string;
+  model_name: string;
+  model_version: string;
+  window: { start: string; end: string };
+  confidence: number;
+  confidence_heuristic: string;
+  generated_at: string;
+  superseded_at: string | null;
+  locations: PredictionLocation[];
+  note: string;
 }
 
 export interface DashboardOverview {

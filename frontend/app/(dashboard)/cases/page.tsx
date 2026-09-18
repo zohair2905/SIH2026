@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import {
   Bell,
@@ -33,9 +33,8 @@ import {
   DialogDescription,
   DialogFooter,
 } from "@/components/ui/dialog";
-import { initialCases } from "@/mocks/cases";
-import { dashboardKPIs } from "@/mocks/dashboard";
-import type { CaseSummary } from "@/types";
+import { getCases, registerCase } from "@/lib/api/cases";
+import type { CaseRecord, CaseStatus, SeverityLevel } from "@/types";
 
 const crimeTypes = [
   "UPI Fraud",
@@ -47,24 +46,85 @@ const crimeTypes = [
   "Online Shopping Fraud",
 ];
 
+interface CaseRow {
+  id: string;
+  date: string;
+  title: string;
+  location: string;
+  amount: string;
+  risk: SeverityLevel | null;
+  score: string;
+  status: CaseStatus;
+  officer: string;
+}
+
+function formatDate(value: string): string {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return "—";
+  }
+  return date.toLocaleDateString("en-IN", {
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+  });
+}
+
+function toRow(record: CaseRecord): CaseRow {
+  const prediction = record.prediction;
+  return {
+    id: record.case_id,
+    date: formatDate(record.created_at),
+    title: record.title,
+    location: prediction?.city ?? "—",
+    amount:
+      record.amount !== null
+        ? `₹${record.amount.toLocaleString("en-IN")}`
+        : "—",
+    risk: prediction?.severity ?? null,
+    score: prediction ? `${Math.round(prediction.risk_score * 100)}%` : "—",
+    status: record.status,
+    officer: "—",
+  };
+}
+
 export default function CasesPage() {
-  const [cases, setCases] = useState(initialCases);
+  const [cases, setCases] = useState<CaseRow[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [offline, setOffline] = useState(false);
   const [search, setSearch] = useState("");
   const [riskFilter, setRiskFilter] = useState("All");
   const [statusFilter, setStatusFilter] = useState("All");
   const [showForm, setShowForm] = useState(false);
 
   const [formData, setFormData] = useState({
+    transactionId: "",
     type: "UPI Fraud",
-    location: "",
     amount: "",
     description: "",
   });
 
+  const load = useCallback(() => {
+    getCases().then((result) => {
+      setCases(result.data.map(toRow));
+      setOffline(result.mocked);
+      setLoading(false);
+    });
+  }, []);
+
+  useEffect(() => {
+    void load();
+  }, [load]);
+
+  const refresh = () => {
+    setLoading(true);
+    void load();
+  };
+
   const filteredCases = cases.filter((item) => {
     const matchesSearch =
       item.id.toLowerCase().includes(search.toLowerCase()) ||
-      item.type.toLowerCase().includes(search.toLowerCase()) ||
+      item.title.toLowerCase().includes(search.toLowerCase()) ||
       item.location.toLowerCase().includes(search.toLowerCase());
 
     const matchesRisk =
@@ -76,33 +136,39 @@ export default function CasesPage() {
     return matchesSearch && matchesRisk && matchesStatus;
   });
 
-  const highRiskCount = cases.filter((c) => c.risk === "high").length;
+  const highRiskCount = cases.filter(
+    (c) => c.risk === "high" || c.risk === "critical"
+  ).length;
   const investigatingCount = cases.filter(
     (c) => c.status === "investigating"
   ).length;
-  const resolvedCount = cases.filter((c) => c.status === "resolved").length;
+  const resolvedCount = cases.filter(
+    (c) => c.status === "resolved" || c.status === "closed"
+  ).length;
 
-  const handleRegisterCase = (e: React.FormEvent<HTMLFormElement>) => {
+  const handleRegisterCase = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
 
-    const newNumber = 4382 + (cases.length - initialCases.length);
+    const result = await registerCase({
+      transaction_id: formData.transactionId.trim(),
+      title: formData.type,
+      description: formData.description || undefined,
+      case_type: "complaint",
+      priority: "medium",
+      amount: formData.amount ? Number(formData.amount) : undefined,
+    });
 
-    const newCase: CaseSummary = {
-      id: `CC-2026-${newNumber}`,
-      date: "16 Sep 2026",
-      type: formData.type,
-      location: formData.location,
-      amount: `₹${Number(formData.amount).toLocaleString("en-IN")}`,
-      risk: "medium",
-      score: "Pending",
-      status: "new",
-      officer: "Unassigned",
-    };
+    if (result.data === null) {
+      toast.error(
+        "Could not register the case. Check the transaction ID and that the backend is running."
+      );
+      return;
+    }
 
-    setCases((previous) => [newCase, ...previous]);
-    setFormData({ type: "UPI Fraud", location: "", amount: "", description: "" });
+    setFormData({ transactionId: "", type: "UPI Fraud", amount: "", description: "" });
     setShowForm(false);
-    toast.success(`${newCase.id} registered successfully.`);
+    toast.success(`${result.data.case_id} registered successfully.`);
+    await load();
   };
 
   return (
@@ -111,20 +177,30 @@ export default function CasesPage() {
         title="Case Management"
         description="Monitor, investigate and manage cybercrime complaints"
       >
-        <span>Last Updated: 16 Sep 2026, 03:31 PM</span>
+        <span>
+          {loading ? "Loading…" : `${cases.length} cases loaded`}
+        </span>
         <button
           type="button"
+          onClick={refresh}
           className="flex size-8 items-center justify-center rounded-md border border-border bg-card text-muted-foreground"
+          aria-label="Refresh cases"
         >
           <RefreshCw className="size-4" />
         </button>
       </PageHeading>
 
+      {offline && (
+        <p className="rounded-md border border-border bg-muted/40 px-4 py-2 text-xs text-muted-foreground">
+          Backend unreachable — no case data to display.
+        </p>
+      )}
+
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <StatCard
           icon={FileText}
           tone="blue"
-          value={String(dashboardKPIs.totalCases)}
+          value={String(cases.length)}
           label="Total Cases"
           note="All registered complaints"
         />
@@ -133,7 +209,7 @@ export default function CasesPage() {
           tone="red"
           value={String(highRiskCount)}
           label="High Risk"
-          note="Require immediate attention"
+          note="Latest prediction severity"
         />
         <StatCard
           icon={TrendingUp}
@@ -165,7 +241,7 @@ export default function CasesPage() {
             <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
             <Input
               className="w-64 pl-9"
-              placeholder="Search Case ID, type or location..."
+              placeholder="Search Case ID, title or city..."
               value={search}
               onChange={(e) => setSearch(e.target.value)}
             />
@@ -191,10 +267,10 @@ export default function CasesPage() {
             onChange={(e) => setStatusFilter(e.target.value)}
           >
             <option value="All">All Status</option>
-            <option value="New">New</option>
-            <option value="Acknowledged">Acknowledged</option>
-            <option value="Investigating">Investigating</option>
-            <option value="Resolved">Resolved</option>
+            <option value="open">Open</option>
+            <option value="investigating">Investigating</option>
+            <option value="resolved">Resolved</option>
+            <option value="closed">Closed</option>
           </select>
         </div>
 
@@ -204,8 +280,8 @@ export default function CasesPage() {
               <tr className="border-b border-border text-left text-xs uppercase text-muted-foreground">
                 <th className="px-5 py-3">Case ID</th>
                 <th className="px-5 py-3">Date</th>
-                <th className="px-5 py-3">Crime Type</th>
-                <th className="px-5 py-3">Location</th>
+                <th className="px-5 py-3">Title</th>
+                <th className="px-5 py-3">Predicted City</th>
                 <th className="px-5 py-3">Amount</th>
                 <th className="px-5 py-3">Risk</th>
                 <th className="px-5 py-3">Risk Score</th>
@@ -215,46 +291,66 @@ export default function CasesPage() {
               </tr>
             </thead>
             <tbody>
-              {filteredCases.map((item) => (
-                <tr
-                  key={item.id}
-                  className="border-b border-border last:border-0 hover:bg-muted/50"
-                >
-                  <td className="px-5 py-3">
-                    <Link
-                      href={`/cases/${item.id}`}
-                      className="font-semibold text-primary"
-                    >
-                      {item.id}
-                    </Link>
-                  </td>
-                  <td className="px-5 py-3">{item.date}</td>
-                  <td className="px-5 py-3">{item.type}</td>
-                  <td className="px-5 py-3">{item.location}</td>
-                  <td className="px-5 py-3 font-medium">{item.amount}</td>
-                  <td className="px-5 py-3">
-                    <SeverityBadge level={item.risk} />
-                  </td>
-                  <td className="px-5 py-3">
-                    <ScoreChip score={item.score} level={item.risk} />
-                  </td>
-                  <td className="px-5 py-3">
-                    <StatusBadge status={item.status} />
-                  </td>
-                  <td className="px-5 py-3">{item.officer}</td>
-                  <td className="px-5 py-3">
-                    <Button asChild size="sm" variant="outline">
-                      <Link href={`/cases/${item.id}`}>
-                        <Eye className="size-3.5" /> View
-                      </Link>
-                    </Button>
+              {loading && (
+                <tr>
+                  <td
+                    colSpan={10}
+                    className="px-5 py-10 text-center text-sm text-muted-foreground"
+                  >
+                    Loading cases…
                   </td>
                 </tr>
-              ))}
+              )}
+
+              {!loading &&
+                filteredCases.map((item) => (
+                  <tr
+                    key={item.id}
+                    className="border-b border-border last:border-0 hover:bg-muted/50"
+                  >
+                    <td className="px-5 py-3">
+                      <Link
+                        href={`/cases/${item.id}`}
+                        className="font-semibold text-primary"
+                      >
+                        {item.id}
+                      </Link>
+                    </td>
+                    <td className="px-5 py-3">{item.date}</td>
+                    <td className="px-5 py-3">{item.title}</td>
+                    <td className="px-5 py-3">{item.location}</td>
+                    <td className="px-5 py-3 font-medium">{item.amount}</td>
+                    <td className="px-5 py-3">
+                      {item.risk ? (
+                        <SeverityBadge level={item.risk} />
+                      ) : (
+                        <span className="text-muted-foreground">—</span>
+                      )}
+                    </td>
+                    <td className="px-5 py-3">
+                      {item.risk ? (
+                        <ScoreChip score={item.score} level={item.risk} />
+                      ) : (
+                        <span className="text-muted-foreground">—</span>
+                      )}
+                    </td>
+                    <td className="px-5 py-3">
+                      <StatusBadge status={item.status} />
+                    </td>
+                    <td className="px-5 py-3">{item.officer}</td>
+                    <td className="px-5 py-3">
+                      <Button asChild size="sm" variant="outline">
+                        <Link href={`/cases/${item.id}`}>
+                          <Eye className="size-3.5" /> View
+                        </Link>
+                      </Button>
+                    </td>
+                  </tr>
+                ))}
             </tbody>
           </table>
 
-          {filteredCases.length === 0 && (
+          {!loading && filteredCases.length === 0 && (
             <div className="py-10 text-center text-sm text-muted-foreground">
               No cases found matching your filters.
             </div>
@@ -282,18 +378,6 @@ export default function CasesPage() {
               type="button"
               className="flex size-8 items-center justify-center rounded-md border border-border"
             >
-              2
-            </button>
-            <button
-              type="button"
-              className="flex size-8 items-center justify-center rounded-md border border-border"
-            >
-              3
-            </button>
-            <button
-              type="button"
-              className="flex size-8 items-center justify-center rounded-md border border-border"
-            >
               <ChevronRight className="size-4" />
             </button>
           </div>
@@ -311,7 +395,23 @@ export default function CasesPage() {
 
           <form onSubmit={handleRegisterCase} className="space-y-4">
             <div className="space-y-2">
-              <Label htmlFor="crimeType">Crime Type</Label>
+              <Label htmlFor="transactionId">Transaction ID</Label>
+              <Input
+                id="transactionId"
+                placeholder="Example: TXN000000294"
+                value={formData.transactionId}
+                onChange={(e) =>
+                  setFormData((previous) => ({
+                    ...previous,
+                    transactionId: e.target.value,
+                  }))
+                }
+                required
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="crimeType">Complaint Type</Label>
               <select
                 id="crimeType"
                 className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm"
@@ -331,22 +431,6 @@ export default function CasesPage() {
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="location">Location</Label>
-              <Input
-                id="location"
-                placeholder="Example: Hadapsar, Pune"
-                value={formData.location}
-                onChange={(e) =>
-                  setFormData((previous) => ({
-                    ...previous,
-                    location: e.target.value,
-                  }))
-                }
-                required
-              />
-            </div>
-
-            <div className="space-y-2">
               <Label htmlFor="amount">Amount Involved</Label>
               <Input
                 id="amount"
@@ -360,7 +444,6 @@ export default function CasesPage() {
                     amount: e.target.value,
                   }))
                 }
-                required
               />
             </div>
 
@@ -377,7 +460,6 @@ export default function CasesPage() {
                     description: e.target.value,
                   }))
                 }
-                required
               />
             </div>
 
