@@ -12,7 +12,10 @@ class Settings:
     env: str = field(default_factory=lambda: os.getenv("APP_ENV", "development"))
     log_level: str = field(default_factory=lambda: os.getenv("LOG_LEVEL", "INFO").upper())
     database_url: str = field(
-        default_factory=lambda: os.getenv("DATABASE_URL", "sqlite:///data/sih_app.db")
+        default_factory=lambda: os.getenv(
+            "DATABASE_URL",
+            "postgresql+psycopg://sih:sih@localhost:5432/sihdb",
+        )
     )
 
 
