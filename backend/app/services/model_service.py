@@ -54,6 +54,31 @@ class ModelService:
             "loaded": self._model is not None,
         }
 
+    def feature_importances(self) -> np.ndarray:
+        """Global feature_importances_ aligned to MODEL_FEATURES order.
+
+        Used by the rule-based explanation heuristic. Handles a bare estimator
+        or a sklearn Pipeline whose final step is the Random Forest.
+        """
+        self.load()
+        estimator = self._model
+        named_steps = getattr(estimator, "named_steps", None)
+        if named_steps is not None:
+            estimator = list(named_steps.values())[-1]
+        importances = getattr(estimator, "feature_importances_", None)
+        if importances is None:
+            raise RuntimeError(
+                "Model does not expose feature_importances_. "
+                "Explanation is unavailable for this artifact."
+            )
+        importances = np.asarray(importances, dtype=float)
+        if importances.shape[0] != len(MODEL_FEATURES):
+            raise RuntimeError(
+                "Feature importance length does not match the 35-feature "
+                "training contract."
+            )
+        return importances
+
     def predict(self, X: pd.DataFrame) -> np.ndarray:
         self.load()
         if list(X.columns) != MODEL_FEATURES:

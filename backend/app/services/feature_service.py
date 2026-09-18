@@ -4,6 +4,17 @@ import pandas as pd
 from app.database.database import DataStore
 from app.services.config import MODEL_FEATURES
 
+TX_COLUMNS = [
+    "transaction_id", "account_type", "transaction_amount", "merchant_category", "state",
+    "credit_score", "has_loan", "loan_type", "emi_amount", "channel", "kyc_status", "hour",
+    "day_of_week", "is_weekend", "time_since_last_transaction", "time_since_last_transaction_available",
+    "transaction_count_1h", "transaction_count_24h", "withdrawal_count_1h", "withdrawal_count_24h",
+    "withdrawal_amount_1h", "withdrawal_amount_24h", "amount_velocity_1h", "amount_velocity_24h",
+]
+
+ATM_COLUMNS = ["atm_id", "latitude", "longitude", "area_type", "atm_status", "atm_density_1km"]
+
+
 class FeatureService:
     """Reconstructs the exact 35 raw features used by train_rf_baseline.py."""
     def __init__(self, store: DataStore) -> None:
@@ -18,23 +29,15 @@ class FeatureService:
         if len(tx_row) != 1:
             raise ValueError(f"Transaction ID is not unique: {transaction_id}")
 
-        tx_columns = [
-            "transaction_id", "account_type", "transaction_amount", "merchant_category", "state",
-            "credit_score", "has_loan", "loan_type", "emi_amount", "channel", "kyc_status", "hour",
-            "day_of_week", "is_weekend", "time_since_last_transaction", "time_since_last_transaction_available",
-            "transaction_count_1h", "transaction_count_24h", "withdrawal_count_1h", "withdrawal_count_24h",
-            "withdrawal_amount_1h", "withdrawal_amount_24h", "amount_velocity_1h", "amount_velocity_24h",
-        ]
-        missing_tx = [c for c in tx_columns if c not in tx_row.columns]
+        missing_tx = [c for c in TX_COLUMNS if c not in tx_row.columns]
         if missing_tx:
             raise ValueError(f"transactions.csv missing model fields: {missing_tx}")
 
-        merged = candidates.merge(tx_row[tx_columns], on="transaction_id", how="left", validate="many_to_one")
-        atm_columns = ["atm_id", "latitude", "longitude", "area_type", "atm_status", "atm_density_1km"]
-        missing_atm = [c for c in atm_columns if c not in atms.columns]
+        merged = candidates.merge(tx_row[TX_COLUMNS], on="transaction_id", how="left", validate="many_to_one")
+        missing_atm = [c for c in ATM_COLUMNS if c not in atms.columns]
         if missing_atm:
             raise ValueError(f"atm_master.csv missing fields: {missing_atm}")
-        merged = merged.merge(atms[atm_columns], on="atm_id", how="left", validate="many_to_one")
+        merged = merged.merge(atms[ATM_COLUMNS], on="atm_id", how="left", validate="many_to_one")
 
         for col in [
             "atm_withdrawal_count", "atm_withdrawals_1h", "atm_withdrawals_24h", "atm_fraud_count",
