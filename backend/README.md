@@ -24,10 +24,17 @@ backend/
   data/transaction_atm_candidates.csv
 ```
 
-The SQLite application database is created automatically at:
+The application database is PostgreSQL with PostGIS, provided by `docker-compose.yml`:
 
 ```text
-backend/data/sih_app.db
+docker compose up -d        # runs sih_postgis on localhost:5432 (sih/sih@/sihdb)
+```
+
+Run migrations and load the deterministic demo seed (3 cases, 5 predictions, 1 alert, 1 demo user):
+
+```bat
+python -m app.db.migrate upgrade
+python -m app.seeding.seed_demo
 ```
 
 ## 3. Setup on Windows
@@ -45,17 +52,13 @@ python scripts\test_inference.py
 
 Copy `.env.example` to `.env` to override defaults (not required; sensible defaults exist). The API starts in degraded mode without the ML artifact so `/health` reports `model_loaded: false`; place the model at `ml/rf_baseline_model.joblib` to enable prediction.
 
-Optional local PostgreSQL/PostGIS target DB (used from the persistence migration onward):
+Development & testing:
 
 ```bat
 docker compose up -d
-```
-
-Dev-only dependencies (tests + lint) live in `requirements-dev.txt`:
-
-```bat
+python -m app.db.migrate upgrade        # apply schema (tests auto-migrate sihdb_test)
 python -m pip install -r requirements-dev.txt
-python -m pytest
+python -m pytest                        # uses DATABASE_URL or sihdb_test on localhost
 ruff check app tests
 ```
 
@@ -77,11 +80,11 @@ Open:
 
 ### Transaction
 
-`GET /transactions/{transaction_id}`
+`GET /api/transactions/{transaction_id}`
 
 ### Create case
 
-`POST /cases`
+`POST /api/cases`
 
 ```json
 {
@@ -94,7 +97,7 @@ Open:
 
 ### Run prediction and persist result
 
-`POST /predictions/predict?case_id=CASE-...`
+`POST /api/predictions/predict?case_id=CASE-...`
 
 ```json
 {
@@ -102,36 +105,40 @@ Open:
 }
 ```
 
-When `case_id` is supplied, the Top-5 predictions are stored and qualifying alerts are created automatically.
+When `case_id` is supplied, the Top-5 predictions are stored and qualifying alerts are created automatically. Re-prediction replaces the stored Top-5 but **appends** new alerts; prior alerts are never deleted.
 
 ### Alerts
 
-- `GET /alerts`
-- `GET /alerts/{alert_id}`
-- `PATCH /alerts/{alert_id}`
+- `GET /api/alerts`
+- `GET /api/alerts/{alert_id}`
+- `PATCH /api/alerts/{alert_id}`
+- `POST /api/alerts/{alert_id}/acknowledge`
 
 ### Cases
 
-- `GET /cases`
-- `GET /cases/{case_id}`
-- `PATCH /cases/{case_id}`
+- `GET /api/cases`
+- `GET /api/cases/{case_id}`
+- `PATCH /api/cases/{case_id}`
+- `GET /api/cases/{case_id}/transactions`
 
 ### Heatmap
 
-`GET /heatmap`
+`GET /api/heatmap`
 
 For one case:
 
-`GET /heatmap?case_id=CASE-...`
+`GET /api/heatmap?case_id=CASE-...`
 
 The heatmap endpoint returns prediction-derived ATM points. It does not claim that those points are confirmed real-world fraud locations.
 
 ### Analytics
 
-- `GET /analytics`
-- `GET /analytics/summary`
+- `GET /api/analytics`
+- `GET /api/analytics/summary`
 
 Analytics combine persisted prototype case/prediction/alert data with basic transaction/ATM dataset distributions.
+
+The pre-Phase-1 route layout (`/cases`, `/alerts`, `/heatmap`, `/analytics`, `/transactions/{id}`, `/predictions/predict`) remains available as thin aliases that delegate to the `/api/*` handlers; they are removed at the Phase 5 cutover.
 
 ## 6. End-to-end smoke test
 
@@ -177,4 +184,4 @@ The dataset/model materials also identify the benchmark as controlled synthetic 
 
 ## 9. Security before deployment
 
-This is a prototype. Before real deployment, add authentication/authorization, audit logging, rate limiting, encrypted transport, secrets management, PII minimization, access controls, structured logs and a production database such as PostgreSQL/PostGIS.
+This is a prototype. Before real deployment, add authentication/authorization, audit logging, rate limiting, encrypted transport, secrets management, PII minimization, access controls and structured logs.
