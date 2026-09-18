@@ -83,6 +83,16 @@ def _legacy_analytics(session: SessionDep):
     return api_analytics.analytics(session)
 
 
+@router.post("/cases/{case_id}/predict", name="legacy_predict_case")
+def _legacy_predict_case(case_id: str, session: SessionDep):
+    return api_cases.predict_case(case_id, session)
+
+
+@router.get("/predictions/{prediction_id}", name="legacy_get_prediction")
+def _legacy_get_prediction(prediction_id: str, session: SessionDep):
+    return api_predictions.get_prediction(prediction_id, session)
+
+
 @router.get("/transactions/{transaction_id}", name="legacy_get_transaction")
 def _legacy_get_transaction(transaction_id: str, session: SessionDep):
     return api_transactions.get_transaction(transaction_id, session=session)
