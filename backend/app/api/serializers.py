@@ -2,7 +2,11 @@ from __future__ import annotations
 
 from typing import Any
 
-from app.db.models import Alert, Case
+from app.db.models import Alert, Case, Prediction, PredictionRun
+
+
+def optional_float(value: Any) -> float | None:
+    return None if value is None else float(value)
 
 
 def to_case_response(case: Case) -> dict[str, Any]:
@@ -69,4 +73,51 @@ def to_transaction_response(row: dict[str, Any]) -> dict[str, Any]:
         "has_loan": row.get("has_loan"),
         "kyc_status": as_str(row.get("kyc_status")),
         "channel": as_str(row.get("channel")),
+    }
+
+
+def to_prediction_item(prediction: Prediction) -> dict[str, Any]:
+    return {
+        "rank": prediction.rank,
+        "atm_id": prediction.atm_id,
+        "risk_score": float(prediction.risk_score),
+        "risk_score_percent": round(prediction.risk_score * 100.0, 2),
+        "confidence": float(prediction.confidence),
+        "severity": prediction.risk_severity,
+        "candidate_rank": prediction.candidate_rank,
+        "latitude": optional_float(prediction.latitude),
+        "longitude": optional_float(prediction.longitude),
+        "city": prediction.city,
+        "area_type": prediction.area_type,
+        "atm_status": prediction.atm_status,
+        "atm_density_1km": optional_float(prediction.atm_density_1km),
+        "atm_withdrawal_count": optional_float(prediction.atm_withdrawal_count),
+        "atm_recent_activity": optional_float(prediction.atm_recent_activity),
+        "synthetic_location_data": bool(prediction.synthetic_location_data),
+        "evidence": prediction.evidence or {},
+    }
+
+
+def to_prediction_run_response(
+    run: PredictionRun, items: list[dict[str, Any]], *, note: str
+) -> dict[str, Any]:
+    return {
+        "prediction_id": run.prediction_id,
+        "status": "completed",
+        "case_id": run.case_id,
+        "transaction_id": run.transaction_id,
+        "model_name": run.model_name,
+        "model_version": run.model_version,
+        "window": {
+            "start": run.window_start.isoformat(),
+            "end": run.window_end.isoformat(),
+        },
+        "confidence": float(run.confidence),
+        "confidence_heuristic": "margin",
+        "generated_at": run.triggered_at.isoformat(),
+        "superseded_at": (
+            run.superseded_at.isoformat() if run.superseded_at is not None else None
+        ),
+        "locations": items,
+        "note": note,
     }
