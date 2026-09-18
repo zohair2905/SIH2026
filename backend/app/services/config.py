@@ -1,3 +1,6 @@
+from __future__ import annotations
+
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 BASE_DIR = Path(__file__).resolve().parents[2]
@@ -11,6 +14,43 @@ MODEL_FILE = ML_DIR / "rf_baseline_model.joblib"
 
 MODEL_NAME = "Random Forest Baseline"
 MODEL_VERSION = "RF_baseline_v1"
+
+# Human-readable, globally unique external prediction identifier.
+# <prefix>-<case_id>-<per-case sequence>; the case_id component is unique in
+# the cases table and the sequence is unique per case/subject.
+PREDICTION_ID_PREFIX = "PRED"
+
+# Deterministic prediction horizon for blueprint 12.1/19 `time_window`.
+# A run predicts the ranking state for [triggered_at, triggered_at + window].
+PREDICTION_WINDOW_HOURS = 24
+
+
+def prediction_window(start: datetime) -> tuple[datetime, datetime]:
+    end = start + timedelta(hours=PREDICTION_WINDOW_HOURS)
+    return (start, end)
+
+
+# Blueprint 14/17 risk->severity mapping. Applied to the RAW model probability
+# (risk_score); it does not replace it.
+RISK_SEVERITY_BANDS = [
+    ("critical", 0.90),
+    ("high", 0.70),
+    ("medium", 0.50),
+    ("low", 0.0),
+]
+
+
+def severity_for_score(risk_score: float) -> str:
+    for severity, floor in RISK_SEVERITY_BANDS:
+        if risk_score >= floor:
+            return severity
+    return "low"
+
+
+# Blueprint 17: low severity is dashboard-only; medium and above materialise
+# as notification/alert rows. This is the alert-creation floor, distinct from
+# per-prediction severity (severity exists on every ranked location).
+ALERT_RISK_FLOOR = 0.50
 
 NUMERIC_FEATURES = [
     "candidate_rank",

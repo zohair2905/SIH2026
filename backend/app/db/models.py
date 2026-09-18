@@ -15,6 +15,7 @@ from sqlalchemy import (
     String,
     Text,
     UniqueConstraint,
+    text,
 )
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -100,6 +101,9 @@ class Case(Base):
     predictions: Mapped[list[Prediction]] = relationship(  # type: ignore[name-defined]
         back_populates="case"
     )
+    prediction_runs: Mapped[list[PredictionRun]] = relationship(  # type: ignore[name-defined]
+        back_populates="case"
+    )
     alerts: Mapped[list[Alert]] = relationship(back_populates="case")  # type: ignore[name-defined]
     entities: Mapped[list[Entity]] = relationship(  # type: ignore[name-defined]
         secondary="case_entities"
@@ -158,17 +162,63 @@ class CaseEntity(Base):
     )
 
 
+class PredictionRun(Base):
+    """One complete top-K prediction execution (blueprint 12.1/19).
+
+    Re-prediction never deletes runs or their prediction rows: the previous
+    current run is marked superseded and the new run becomes current. Alerts
+    keep pointing at their historical prediction rows for the full audit trail.
+    """
+
+    __tablename__ = "prediction_runs"
+    __table_args__ = (
+        UniqueConstraint("case_id", "seq", name="uq_prediction_runs_case_seq"),
+        Index("ix_prediction_runs_case_id", "case_id"),
+        Index("ix_prediction_runs_superseded_at", "superseded_at"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    prediction_id: Mapped[str] = mapped_column(String(64), unique=True, nullable=False)
+    case_id: Mapped[str] = mapped_column(
+        String(64), ForeignKey("cases.case_id", ondelete="CASCADE"), nullable=False
+    )
+    transaction_id: Mapped[str] = mapped_column(String(32), nullable=False)
+    seq: Mapped[int] = mapped_column(Integer, nullable=False)
+    model_name: Mapped[str] = mapped_column(String(64), nullable=False)
+    model_version: Mapped[str] = mapped_column(String(64), nullable=False)
+    window_start: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    window_end: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    confidence: Mapped[float] = mapped_column(nullable=False)
+    triggered_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=utcnow
+    )
+    superseded_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+    case: Mapped[Case] = relationship(back_populates="prediction_runs")
+    predictions: Mapped[list[Prediction]] = relationship(  # type: ignore[name-defined]
+        back_populates="run"
+    )
+
+
 class Prediction(Base):
     __tablename__ = "predictions"
     __table_args__ = (
         CheckConstraint("rank BETWEEN 1 AND 5", name="rank"),
         CheckConstraint("risk_score BETWEEN 0 AND 1", name="risk_score"),
-        UniqueConstraint("case_id", "rank"),
+        CheckConstraint(
+            "risk_severity IN ('low','medium','high','critical')",
+            name="risk_severity",
+        ),
+        UniqueConstraint("run_id", "rank", name="uq_predictions_run_rank"),
+        Index("ix_predictions_run_id", "run_id"),
         Index("ix_predictions_case_id", "case_id"),
         Index("ix_predictions_atm_id", "atm_id"),
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    run_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("prediction_runs.id", ondelete="CASCADE"), nullable=False
+    )
     case_id: Mapped[str] = mapped_column(
         String(64), ForeignKey("cases.case_id", ondelete="CASCADE"), nullable=False
     )
@@ -176,6 +226,13 @@ class Prediction(Base):
     atm_id: Mapped[str] = mapped_column(String(32), nullable=False)
     rank: Mapped[int] = mapped_column(Integer, nullable=False)
     risk_score: Mapped[float] = mapped_column(nullable=False)
+    risk_severity: Mapped[str] = mapped_column(
+        String(16), nullable=False, server_default="low"
+    )
+    confidence: Mapped[float] = mapped_column(nullable=False)
+    evidence: Mapped[dict] = mapped_column(
+        JSONB, nullable=False, server_default=text("'{}'::jsonb")
+    )
     candidate_rank: Mapped[int] = mapped_column(Integer, nullable=False)
     latitude: Mapped[float | None] = mapped_column()
     longitude: Mapped[float | None] = mapped_column()
@@ -193,6 +250,7 @@ class Prediction(Base):
     )
 
     case: Mapped[Case] = relationship(back_populates="predictions")
+    run: Mapped[PredictionRun] = relationship(back_populates="predictions")
     alerts: Mapped[list[Alert]] = relationship(back_populates="prediction")  # type: ignore[name-defined]
 
 
