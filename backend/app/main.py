@@ -5,6 +5,7 @@ from app.api.alerts import router as alerts_router
 from app.api.analytics import router as analytics_router
 from app.api.cases import router as cases_router
 from app.api.compat import router as compat_router
+from app.api.dashboard import router as dashboard_router
 from app.api.health import router as health_router
 from app.api.heatmap import router as heatmap_router
 from app.api.predictions import router as predictions_router
@@ -45,6 +46,7 @@ app.include_router(predictions_router)
 app.include_router(alerts_router)
 app.include_router(heatmap_router)
 app.include_router(analytics_router)
+app.include_router(dashboard_router)
 app.include_router(compat_router)
 
 register_exception_handlers(app)

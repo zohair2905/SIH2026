@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import {
   AlertTriangle,
@@ -24,25 +24,79 @@ import {
   Dialog,
   DialogContent,
   DialogDescription,
+  DialogFooter,
   DialogHeader,
   DialogTitle,
-  DialogFooter,
 } from "@/components/ui/dialog";
-import { initialAlerts } from "@/mocks/alerts";
-import type { AlertSummary } from "@/types";
+import { acknowledgeAlert, getAlerts, resolveAlert } from "@/lib/api/alerts";
+import type { AlertRecord, AlertStatus } from "@/types";
+
+function formatDateTime(value: string): string {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return "—";
+  }
+  return date.toLocaleString("en-IN");
+}
+
+function riskPercent(score: number): string {
+  return `${Math.round(score * 100)}%`;
+}
 
 export default function AlertsPage() {
-  const [alerts, setAlerts] = useState(initialAlerts);
+  const [alerts, setAlerts] = useState<AlertRecord[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [offline, setOffline] = useState(false);
   const [search, setSearch] = useState("");
   const [severityFilter, setSeverityFilter] = useState("All");
   const [statusFilter, setStatusFilter] = useState("All");
-  const [selectedAlert, setSelectedAlert] = useState<AlertSummary | null>(null);
+  const [selectedAlert, setSelectedAlert] = useState<AlertRecord | null>(null);
+
+  const load = useCallback(() => {
+    getAlerts().then((result) => {
+      setAlerts(result.data);
+      setOffline(result.mocked);
+      setLoading(false);
+    });
+  }, []);
+
+  useEffect(() => {
+    void load();
+  }, [load]);
+
+  const refresh = () => {
+    setLoading(true);
+    void load();
+  };
+
+  const replaceAlert = (updated: AlertRecord | null, id: number) => {
+    if (updated === null) {
+      toast.error("Backend did not confirm the alert update.");
+      return;
+    }
+    setAlerts((previous) =>
+      previous.map((alert) => (alert.alert_id === id ? updated : alert))
+    );
+    setSelectedAlert((previous) =>
+      previous && previous.alert_id === id ? updated : previous
+    );
+    toast.success(`Alert ${id} is now ${updated.status}.`);
+  };
+
+  const handleAcknowledge = async (id: number) => {
+    replaceAlert(await acknowledgeAlert(id), id);
+  };
+
+  const handleResolve = async (id: number) => {
+    replaceAlert(await resolveAlert(id), id);
+  };
 
   const filteredAlerts = alerts.filter((alert) => {
     const matchesSearch =
-      alert.id.toLowerCase().includes(search.toLowerCase()) ||
-      alert.type.toLowerCase().includes(search.toLowerCase()) ||
-      alert.location.toLowerCase().includes(search.toLowerCase());
+      String(alert.alert_id).toLowerCase().includes(search.toLowerCase()) ||
+      alert.case_id.toLowerCase().includes(search.toLowerCase()) ||
+      alert.atm_id.toLowerCase().includes(search.toLowerCase()) ||
+      alert.message.toLowerCase().includes(search.toLowerCase());
 
     const matchesSeverity =
       severityFilter === "All" || alert.severity === severityFilter.toLowerCase();
@@ -53,30 +107,17 @@ export default function AlertsPage() {
     return matchesSearch && matchesSeverity && matchesStatus;
   });
 
-  const updateAlert = (alertId: string, status: AlertSummary["status"]) => {
-    setAlerts((previous) =>
-      previous.map((alert) =>
-        alert.id === alertId ? { ...alert, status } : alert
-      )
-    );
-
-    setSelectedAlert((previous) =>
-      previous && previous.id === alertId ? { ...previous, status } : previous
-    );
-
-    toast.success(
-      status === "acknowledged"
-        ? `${alertId} acknowledged successfully.`
-        : `${alertId} marked as resolved.`
-    );
-  };
-
-  const activeCount = alerts.filter((a) => a.status !== "resolved").length;
-  const highSeverityCount = alerts.filter((a) => a.severity === "high").length;
-  const unacknowledgedCount = alerts.filter(
-    (a) => a.status === "unacknowledged"
+  const activeCount = alerts.filter((a) =>
+    ["new", "acknowledged"].includes(a.status)
   ).length;
+  const highSeverityCount = alerts.filter(
+    (a) => a.severity === "high" || a.severity === "critical"
+  ).length;
+  const unacknowledgedCount = alerts.filter((a) => a.status === "new").length;
   const resolvedCount = alerts.filter((a) => a.status === "resolved").length;
+
+  const isOpen = (status: AlertStatus) => status === "new";
+  const isAcknowledged = (status: AlertStatus) => status === "acknowledged";
 
   return (
     <div className="space-y-6">
@@ -84,14 +125,22 @@ export default function AlertsPage() {
         title="Alert Management"
         description="Monitor and respond to real-time cybercrime intelligence alerts"
       >
-        <span>Last Updated: 16 Sep 2026, 03:31 PM</span>
+        <span>{loading ? "Loading…" : `${alerts.length} alerts loaded`}</span>
         <button
           type="button"
+          onClick={refresh}
           className="flex size-8 items-center justify-center rounded-md border border-border bg-card text-muted-foreground"
+          aria-label="Refresh alerts"
         >
           <RefreshCw className="size-4" />
         </button>
       </PageHeading>
+
+      {offline && (
+        <p className="rounded-md border border-border bg-muted/40 px-4 py-2 text-xs text-muted-foreground">
+          Backend unreachable — no alerts to display.
+        </p>
+      )}
 
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <StatCard
@@ -99,7 +148,7 @@ export default function AlertsPage() {
           tone="blue"
           value={String(activeCount)}
           label="Active Alerts"
-          note="Requires monitoring"
+          note="New + acknowledged"
         />
         <StatCard
           icon={AlertTriangle}
@@ -126,15 +175,15 @@ export default function AlertsPage() {
 
       <Panel
         icon={Bell}
-        title="Active Intelligence Alerts"
-        subtitle="Real-time alerts generated by the predictive engine"
+        title="Intelligence Alerts"
+        subtitle="Alerts generated by the predictive engine from persisted prediction runs"
       >
         <div className="flex flex-wrap items-center gap-3 border-b border-border px-5 py-4">
           <div className="relative">
             <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
             <Input
               className="w-64 pl-9"
-              placeholder="Search alert ID, type or location..."
+              placeholder="Search alert, case, ATM or message..."
               value={search}
               onChange={(e) => setSearch(e.target.value)}
             />
@@ -148,6 +197,7 @@ export default function AlertsPage() {
               onChange={(e) => setSeverityFilter(e.target.value)}
             >
               <option value="All">All Severity</option>
+              <option value="Critical">Critical</option>
               <option value="High">High</option>
               <option value="Medium">Medium</option>
               <option value="Low">Low</option>
@@ -160,9 +210,10 @@ export default function AlertsPage() {
             onChange={(e) => setStatusFilter(e.target.value)}
           >
             <option value="All">All Status</option>
-            <option value="Unacknowledged">Unacknowledged</option>
-            <option value="Acknowledged">Acknowledged</option>
-            <option value="Resolved">Resolved</option>
+            <option value="new">New</option>
+            <option value="acknowledged">Acknowledged</option>
+            <option value="dismissed">Dismissed</option>
+            <option value="resolved">Resolved</option>
           </select>
         </div>
 
@@ -172,8 +223,8 @@ export default function AlertsPage() {
               <tr className="border-b border-border text-left text-xs uppercase text-muted-foreground">
                 <th className="px-5 py-3">Alert ID</th>
                 <th className="px-5 py-3">Time</th>
-                <th className="px-5 py-3">Alert Type</th>
-                <th className="px-5 py-3">Location</th>
+                <th className="px-5 py-3">ATM / Message</th>
+                <th className="px-5 py-3">Risk Score</th>
                 <th className="px-5 py-3">Severity</th>
                 <th className="px-5 py-3">Status</th>
                 <th className="px-5 py-3">Case</th>
@@ -181,67 +232,92 @@ export default function AlertsPage() {
               </tr>
             </thead>
             <tbody>
-              {filteredAlerts.map((alert) => (
-                <tr
-                  key={alert.id}
-                  className="border-b border-border last:border-0 hover:bg-muted/50"
-                >
-                  <td className="px-5 py-3 font-semibold text-primary">
-                    {alert.id}
-                  </td>
-                  <td className="px-5 py-3">{alert.time}</td>
-                  <td className="px-5 py-3">{alert.type}</td>
-                  <td className="px-5 py-3">{alert.location}</td>
-                  <td className="px-5 py-3">
-                    <SeverityBadge level={alert.severity} />
-                  </td>
-                  <td className="px-5 py-3">
-                    <StatusBadge status={alert.status} />
-                  </td>
-                  <td className="px-5 py-3">
-                    <Link
-                      href={`/cases/${alert.caseId}`}
-                      className="font-semibold text-primary"
-                    >
-                      {alert.caseId}
-                    </Link>
-                  </td>
-                  <td className="px-5 py-3">
-                    <div className="flex items-center gap-2">
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        onClick={() => setSelectedAlert(alert)}
-                      >
-                        <Eye className="size-3.5" /> View
-                      </Button>
-                      {alert.status === "unacknowledged" && (
-                        <Button
-                          size="sm"
-                          onClick={() => updateAlert(alert.id, "acknowledged")}
-                        >
-                          Acknowledge
-                        </Button>
-                      )}
-                      {alert.status === "acknowledged" && (
-                        <Button
-                          size="sm"
-                          className="bg-green-700 hover:bg-green-800"
-                          onClick={() => updateAlert(alert.id, "resolved")}
-                        >
-                          Resolve
-                        </Button>
-                      )}
-                    </div>
+              {loading && (
+                <tr>
+                  <td
+                    colSpan={8}
+                    className="px-5 py-10 text-center text-sm text-muted-foreground"
+                  >
+                    Loading alerts…
                   </td>
                 </tr>
-              ))}
+              )}
+
+              {!loading &&
+                filteredAlerts.map((alert) => (
+                  <tr
+                    key={alert.alert_id}
+                    className="border-b border-border last:border-0 hover:bg-muted/50"
+                  >
+                    <td className="px-5 py-3 font-semibold text-primary">
+                      {alert.alert_id}
+                    </td>
+                    <td className="px-5 py-3 whitespace-nowrap">
+                      {formatDateTime(alert.created_at)}
+                    </td>
+                    <td className="max-w-64 px-5 py-3">
+                      <span className="block truncate font-medium">
+                        {alert.atm_id}
+                      </span>
+                      <span className="block truncate text-xs text-muted-foreground">
+                        {alert.message}
+                      </span>
+                    </td>
+                    <td className="px-5 py-3 font-medium">
+                      {riskPercent(alert.risk_score)}
+                    </td>
+                    <td className="px-5 py-3">
+                      <SeverityBadge level={alert.severity} />
+                    </td>
+                    <td className="px-5 py-3">
+                      <StatusBadge status={alert.status} />
+                    </td>
+                    <td className="px-5 py-3">
+                      <Link
+                        href={`/cases/${alert.case_id}`}
+                        className="font-semibold text-primary"
+                      >
+                        {alert.case_id}
+                      </Link>
+                    </td>
+                    <td className="px-5 py-3">
+                      <div className="flex items-center gap-2">
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => setSelectedAlert(alert)}
+                        >
+                          <Eye className="size-3.5" /> View
+                        </Button>
+                        {isOpen(alert.status) && (
+                          <Button
+                            size="sm"
+                            onClick={() => void handleAcknowledge(alert.alert_id)}
+                          >
+                            Acknowledge
+                          </Button>
+                        )}
+                        {isAcknowledged(alert.status) && (
+                          <Button
+                            size="sm"
+                            className="bg-green-700 hover:bg-green-800"
+                            onClick={() => void handleResolve(alert.alert_id)}
+                          >
+                            Resolve
+                          </Button>
+                        )}
+                      </div>
+                    </td>
+                  </tr>
+                ))}
             </tbody>
           </table>
 
-          {filteredAlerts.length === 0 && (
+          {!loading && filteredAlerts.length === 0 && (
             <div className="py-10 text-center text-sm text-muted-foreground">
-              No alerts found matching your filters.
+              {alerts.length === 0
+                ? "No alerts have been generated yet."
+                : "No alerts found matching your filters."}
             </div>
           )}
         </div>
@@ -269,76 +345,102 @@ export default function AlertsPage() {
       >
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Alert Details</DialogTitle>
-            <DialogDescription>{selectedAlert?.id}</DialogDescription>
+            <DialogTitle>Alert {selectedAlert?.alert_id}</DialogTitle>
+            <DialogDescription>
+              {selectedAlert
+                ? `Prediction-derived alert for case ${selectedAlert.case_id}`
+                : ""}
+            </DialogDescription>
           </DialogHeader>
 
           {selectedAlert && (
-            <div>
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <span className="text-xs text-muted-foreground">
-                    Alert Type
-                  </span>
-                  <strong className="mt-1 block text-sm text-foreground">
-                    {selectedAlert.type}
-                  </strong>
-                </div>
-                <div>
-                  <span className="text-xs text-muted-foreground">
-                    Location
-                  </span>
-                  <strong className="mt-1 block text-sm text-foreground">
-                    {selectedAlert.location}
-                  </strong>
-                </div>
-                <div>
-                  <span className="text-xs text-muted-foreground">
-                    Severity
-                  </span>
-                  <div className="mt-1">
-                    <SeverityBadge level={selectedAlert.severity} />
-                  </div>
-                </div>
-                <div>
-                  <span className="text-xs text-muted-foreground">
-                    Status
-                  </span>
-                  <div className="mt-1">
-                    <StatusBadge status={selectedAlert.status} />
-                  </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <span className="text-xs text-muted-foreground">ATM</span>
+                <strong className="mt-1 block text-sm text-foreground">
+                  {selectedAlert.atm_id}
+                </strong>
+              </div>
+              <div>
+                <span className="text-xs text-muted-foreground">
+                  Risk Score
+                </span>
+                <strong className="mt-1 block text-sm text-foreground">
+                  {riskPercent(selectedAlert.risk_score)}
+                </strong>
+              </div>
+              <div>
+                <span className="text-xs text-muted-foreground">Severity</span>
+                <div className="mt-1">
+                  <SeverityBadge level={selectedAlert.severity} />
                 </div>
               </div>
-
-              <div className="mt-5 rounded-md border border-border bg-muted/50 p-4">
-                <strong className="mb-1.5 block text-sm text-foreground">
-                  Intelligence Summary
+              <div>
+                <span className="text-xs text-muted-foreground">Status</span>
+                <div className="mt-1">
+                  <StatusBadge status={selectedAlert.status} />
+                </div>
+              </div>
+              <div>
+                <span className="text-xs text-muted-foreground">Created</span>
+                <strong className="mt-1 block text-sm text-foreground">
+                  {formatDateTime(selectedAlert.created_at)}
                 </strong>
-                <p className="text-sm leading-relaxed text-muted-foreground">
-                  {selectedAlert.description}
-                </p>
+              </div>
+              <div>
+                <span className="text-xs text-muted-foreground">
+                  Acknowledged
+                </span>
+                <strong className="mt-1 block text-sm text-foreground">
+                  {selectedAlert.acknowledged_at
+                    ? formatDateTime(selectedAlert.acknowledged_at)
+                    : "—"}
+                </strong>
+              </div>
+              <div>
+                <span className="text-xs text-muted-foreground">Case</span>
+                <Link
+                  href={`/cases/${selectedAlert.case_id}`}
+                  className="mt-1 block text-sm font-semibold text-primary"
+                >
+                  {selectedAlert.case_id}
+                </Link>
+              </div>
+              <div>
+                <span className="text-xs text-muted-foreground">
+                  Prediction
+                </span>
+                <strong className="mt-1 block text-sm text-foreground">
+                  {selectedAlert.prediction_id ?? "—"}
+                </strong>
               </div>
             </div>
           )}
 
+          <div className="mt-5 rounded-md border border-border bg-muted/50 p-4">
+            <strong className="mb-1.5 block text-sm text-foreground">
+              Alert Message
+            </strong>
+            <p className="text-sm leading-relaxed text-muted-foreground">
+              {selectedAlert?.message}
+            </p>
+          </div>
+
           <DialogFooter>
-            <Button
-              variant="outline"
-              onClick={() => setSelectedAlert(null)}
-            >
+            <Button variant="outline" onClick={() => setSelectedAlert(null)}>
               Close
             </Button>
-            {selectedAlert?.status === "unacknowledged" && (
+            {selectedAlert && isOpen(selectedAlert.status) && (
               <Button
-                onClick={() => updateAlert(selectedAlert.id, "acknowledged")}
+                onClick={() => void handleAcknowledge(selectedAlert.alert_id)}
               >
                 Acknowledge Alert
               </Button>
             )}
-            {selectedAlert?.status === "acknowledged" && (
+            {selectedAlert && isAcknowledged(selectedAlert.status) && (
               <Button
                 className="bg-green-700 hover:bg-green-800"
-                onClick={() => updateAlert(selectedAlert.id, "resolved")}
+                onClick={() => void handleResolve(selectedAlert.alert_id)}
               >
                 Resolve Alert
               </Button>

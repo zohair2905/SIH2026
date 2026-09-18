@@ -10,7 +10,7 @@ export type CaseStatus =
   | "open"
   | "closed";
 
-export type AlertStatus = "unacknowledged" | "acknowledged" | "resolved";
+export type AlertStatus = "new" | "acknowledged" | "dismissed" | "resolved";
 
 export type UserStatus = "Active" | "Inactive";
 
@@ -23,27 +23,6 @@ export interface PredictedLocation {
   confidence: ConfidenceLevel;
   window: string;
   risk: SeverityLevel;
-}
-
-export interface RecentAlert {
-  time: string;
-  caseId: string;
-  location: string;
-  type: string;
-  severity: SeverityLevel;
-  status: CaseStatus;
-  assigned: string;
-}
-
-export interface AlertSummary {
-  id: string;
-  time: string;
-  type: string;
-  location: string;
-  description: string;
-  severity: SeverityLevel;
-  status: AlertStatus;
-  caseId: string;
 }
 
 export interface Report {
@@ -130,13 +109,6 @@ export interface AccuracyDatum {
 export interface CaseCategoryDatum {
   name: string;
   cases: number;
-}
-
-export interface DashboardKPIs {
-  totalCases: number;
-  highRiskCases: number;
-  activeAlerts: number;
-  predictionsToday: number;
 }
 
 export interface CasePredictionSummary {
@@ -254,10 +226,61 @@ export interface PredictionRun {
   note: string;
 }
 
+export interface DashboardSummary {
+  cases: number;
+  open_cases: number;
+  alerts: number;
+  active_alerts: number;
+  unacknowledged_alerts: number;
+  predictions: number;
+  average_prediction_risk: number | null;
+}
+
+export interface SeverityCounts {
+  critical: number;
+  high: number;
+  medium: number;
+  low: number;
+}
+
+export interface DashboardTopAtm {
+  atm_id: string;
+  latitude: number;
+  longitude: number;
+  risk_score: number;
+  best_rank: number;
+  observation_count: number;
+  severity: SeverityLevel;
+  confidence: number;
+  top_factors: HeatmapEvidenceFactor[];
+  area_type: string | null;
+  window_start: string | null;
+  window_end: string | null;
+  synthetic_location_data: boolean;
+}
+
+export interface AlertRecord {
+  alert_id: number;
+  case_id: string;
+  prediction_id: number | null;
+  transaction_id: string;
+  atm_id: string;
+  risk_score: number;
+  severity: SeverityLevel;
+  status: AlertStatus;
+  message: string;
+  acknowledged_by: number | null;
+  acknowledged_at: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
 export interface DashboardOverview {
-  kpis: DashboardKPIs;
-  predictedLocations: PredictedLocation[];
-  recentAlerts: RecentAlert[];
+  summary: DashboardSummary;
+  alert_severity_distribution: SeverityCounts;
+  case_risk_distribution: SeverityCounts;
+  top_atms: DashboardTopAtm[];
+  recent_alerts: AlertRecord[];
 }
 
 export interface PredictionRunInput {

@@ -1,6 +1,6 @@
 import { apiGet, apiPost, withMock, type ApiResult } from "@/lib/api/common";
 import type { PredictionResult, PredictionRun, PredictionRunInput } from "@/types";
-import { predictedLocations } from "@/mocks/dashboard";
+import { latestPredictions as predictedLocations } from "@/mocks/predictions";
 
 const mockResult: PredictionResult = {
   id: "PRED-2026-0917",

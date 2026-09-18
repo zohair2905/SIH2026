@@ -281,6 +281,14 @@ class AlertRepository:
             stmt = stmt.where(Alert.severity == severity)
         return list(self.session.scalars(stmt))
 
+    def recent(self, limit: int = 8) -> list[Alert]:
+        stmt = (
+            select(Alert)
+            .order_by(Alert.created_at.desc(), Alert.id.desc())
+            .limit(limit)
+        )
+        return list(self.session.scalars(stmt))
+
     def update_status(self, alert_id: int, status: str) -> Alert | None:
         alert = self.get(alert_id)
         if alert is None:
@@ -321,6 +329,9 @@ class AnalyticsRepository:
             .select_from(Alert)
             .where(Alert.status.in_(["new", "acknowledged"]))
         )
+        unacknowledged = (
+            select(func.count()).select_from(Alert).where(Alert.status == "new")
+        )
         current_runs = (
             select(PredictionRun.id).where(PredictionRun.superseded_at.is_(None)).subquery()
         )
@@ -340,11 +351,23 @@ class AnalyticsRepository:
             "open_cases": self.session.execute(open_case).scalar_one(),
             "alerts": self.session.execute(total_alert).scalar_one(),
             "active_alerts": self.session.execute(active_alert).scalar_one(),
+            "unacknowledged_alerts": self.session.execute(unacknowledged).scalar_one(),
             "predictions": self.session.execute(scoped_pred).scalar_one(),
             "average_prediction_risk": (
                 float(average_risk) if average_risk is not None else None
             ),
         }
+
+    def alert_severity_distribution(self) -> dict[str, int]:
+        """Alert counts grouped by severity; absent severities default to zero."""
+        counts = dict.fromkeys(["critical", "high", "medium", "low"], 0)
+        rows = self.session.execute(
+            select(Alert.severity, func.count()).group_by(Alert.severity)
+        ).all()
+        for severity, count in rows:
+            if severity in counts:
+                counts[severity] = int(count)
+        return counts
 
     def prediction_heatmap(self, case_id: str | None = None) -> list[dict[str, Any]]:
         """Heatmap points aggregated across current (non-superseded) runs.

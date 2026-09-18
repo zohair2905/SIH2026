@@ -10,20 +10,20 @@ const variantByStatus: Record<
   new: "statusNew",
   open: "statusNew",
   acknowledged: "statusAcknowledged",
+  dismissed: "statusAcknowledged",
   investigating: "statusInvestigating",
   resolved: "statusResolved",
   closed: "statusResolved",
-  unacknowledged: "statusNew",
 };
 
 const labelByStatus: Record<CaseStatus | AlertStatus, string> = {
   new: "New",
   open: "Open",
   acknowledged: "Acknowledged",
+  dismissed: "Dismissed",
   investigating: "Investigating",
   resolved: "Resolved",
   closed: "Closed",
-  unacknowledged: "Unacknowledged",
 };
 
 export function StatusBadge({
