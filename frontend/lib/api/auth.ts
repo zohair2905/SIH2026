@@ -1,5 +1,5 @@
-import type { AuthSession } from "@/lib/auth";
-import { setSession } from "@/lib/auth";
+import type { AuthSession, UserRole } from "@/lib/auth";
+import { setSession, clearSession } from "@/lib/auth";
 
 export interface LoginCredentials {
   email: string;
@@ -8,17 +8,20 @@ export interface LoginCredentials {
 
 export interface LoginResult {
   ok: boolean;
-  mocked: boolean;
   session?: AuthSession;
   error?: string;
 }
 
-const mockSession: AuthSession = {
-  name: "Insp. A. Patil",
-  badge: "AP",
-  email: "a.patil@cic.gov.in",
-  org: "Maharashtra Police",
-  loginAt: new Date().toLocaleString("en-IN"),
+export interface MeResult {
+  ok: boolean;
+  session?: AuthSession;
+  error?: string;
+}
+
+const ORG_LABEL: Record<UserRole, string> = {
+  admin: "Administrator",
+  investigator: "Investigator",
+  analyst: "Intelligence Analyst",
 };
 
 export async function login(
@@ -32,52 +35,72 @@ export async function login(
       credentials: "include",
     });
 
-    if (response.ok) {
-      const data = await response.json();
+    const data = await response.json().catch(() => null);
 
-      const session: AuthSession = {
-        name: data.user?.name ?? mockSession.name,
-        badge: data.user?.badge ?? mockSession.badge,
-        email: data.user?.email ?? credentials.email,
-        org: data.user?.org ?? mockSession.org,
-        loginAt: new Date().toLocaleString("en-IN"),
+    if (!response.ok) {
+      return {
+        ok: false,
+        error: data?.detail ?? "Invalid user ID or password.",
       };
-
-      setSession(session);
-      return { ok: true, mocked: false, session };
     }
 
-    return {
-      ok: false,
-      mocked: false,
-      error: (await response.json().catch(() => null))?.detail ??
-        "Invalid credentials.",
+    const user = data?.user;
+    if (!user) {
+      return { ok: false, error: "The authentication service returned no user." };
+    }
+
+    const session: AuthSession = {
+      id: user.id,
+      badge: user.badge ?? "",
+      name: user.name ?? "Officer",
+      email: user.email ?? credentials.email,
+      role: user.role ?? "investigator",
+      org: ORG_LABEL[user.role as UserRole] ?? "Law Enforcement",
+      loginAt: new Date().toLocaleString("en-IN"),
     };
+
+    setSession(session);
+    return { ok: true, session };
   } catch {
-    // Backend unavailable: accept the demo login and record a stub session.
-    setSession(mockSession);
-    return { ok: true, mocked: true, session: mockSession };
+    return { ok: false, error: "Backend unreachable. Please try again." };
   }
 }
 
-export async function getMe(): Promise<AuthSession | null> {
+export async function getMe(): Promise<MeResult> {
   try {
     const response = await fetch("/api/auth/me", { credentials: "include" });
 
     if (!response.ok) {
-      return null;
+      return { ok: false };
     }
 
-    const data = await response.json();
+    const user = (await response.json())?.user;
+    if (!user) {
+      return { ok: false };
+    }
 
-    return {
-      name: data.user?.name ?? "Unknown User",
-      badge: data.user?.badge ?? "U",
-      email: data.user?.email ?? "",
-      org: data.user?.org ?? "Law Enforcement",
+    const session: AuthSession = {
+      id: user.id,
+      badge: user.badge ?? "",
+      name: user.name ?? "Officer",
+      email: user.email ?? "",
+      role: user.role ?? "investigator",
+      org: ORG_LABEL[user.role as UserRole] ?? "Law Enforcement",
       loginAt: new Date().toLocaleString("en-IN"),
     };
+
+    setSession(session);
+    return { ok: true, session };
   } catch {
-    return null;
+    return { ok: false };
   }
+}
+
+export async function logout(): Promise<void> {
+  try {
+    await fetch("/api/auth/logout", { method: "POST", credentials: "include" });
+  } catch {
+    // Local logout remains valid even if the backend is unreachable.
+  }
+  clearSession();
 }

@@ -37,10 +37,6 @@ export default function LoginPage() {
       return;
     }
 
-    if (result.mocked) {
-      toast.info("Backend offline — signed in with demo session.");
-    }
-
     router.replace("/dashboard");
   };
 

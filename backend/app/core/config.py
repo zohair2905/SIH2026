@@ -17,6 +17,23 @@ class Settings:
             "postgresql+psycopg://sih:sih@localhost:5432/sihdb",
         )
     )
+    cors_origins: tuple[str, ...] = field(
+        default_factory=lambda: tuple(
+            origin.strip()
+            for origin in os.getenv("CORS_ORIGINS", "http://localhost:3000").split(",")
+            if origin.strip()
+        )
+    )
+    token_ttl_hours: int = field(
+        default_factory=lambda: int(os.getenv("ACCESS_TOKEN_TTL_HOURS", "12"))
+    )
+    session_cookie_name: str = field(
+        default_factory=lambda: os.getenv("SESSION_COOKIE_NAME", "sih_access_token")
+    )
+    secure_cookies: bool = field(
+        default_factory=lambda: os.getenv("AUTH_COOKIE_SECURE", "false").lower()
+        in {"1", "true", "yes", "on"}
+    )
 
 
 settings = Settings()

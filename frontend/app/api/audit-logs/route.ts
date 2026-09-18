@@ -12,19 +12,13 @@ export async function GET() {
     return NextResponse.json({ detail: "Authentication required" }, { status: 401 });
   }
 
-  const upstream = await fetch(`${backendUrl()}/api/auth/me`, {
+  const upstream = await fetch(`${backendUrl()}/api/audit-logs`, {
     headers: { Authorization: `Bearer ${token}` },
     cache: "no-store",
   });
 
   const data = await upstream.json().catch(() => ({}));
 
-  if (!upstream.ok) {
-    return NextResponse.json(
-      { detail: data?.detail ?? "Invalid or expired session" },
-      { status: upstream.status }
-    );
-  }
-
-  return NextResponse.json({ user: data });
+  // Forward backend status including the 403 admin-only gate.
+  return NextResponse.json(data, { status: upstream.status });
 }

@@ -68,6 +68,30 @@ def to_alert_response(alert: Alert) -> dict[str, Any]:
     }
 
 
+def to_user_response(user: object) -> dict[str, Any]:
+    return {
+        "id": user.id,  # type: ignore[attr-defined]
+        "badge": user.badge,  # type: ignore[attr-defined]
+        "name": user.name,  # type: ignore[attr-defined]
+        "email": user.email,  # type: ignore[attr-defined]
+        "role": user.role,  # type: ignore[attr-defined]
+    }
+
+
+def to_audit_response(entry: object) -> dict[str, Any]:
+    return {
+        "id": entry.id,  # type: ignore[attr-defined]
+        "user_id": entry.user_id,  # type: ignore[attr-defined]
+        "actor": entry.actor,  # type: ignore[attr-defined]
+        "action": entry.action,  # type: ignore[attr-defined]
+        "resource_type": entry.resource_type,  # type: ignore[attr-defined]
+        "resource_id": entry.resource_id,  # type: ignore[attr-defined]
+        "details": entry.details or {},  # type: ignore[attr-defined]
+        "ip_address": entry.ip_address,  # type: ignore[attr-defined]
+        "created_at": entry.created_at.isoformat(),  # type: ignore[attr-defined]
+    }
+
+
 def to_transaction_response(row: dict[str, Any]) -> dict[str, Any]:
     from datetime import datetime
 

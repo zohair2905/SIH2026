@@ -7,11 +7,13 @@ operational tables and reloads from the literals below.
 
 from __future__ import annotations
 
+import os
 from datetime import datetime
 
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
+from app.core.security import hash_password
 from app.db.models import Alert, Case, Prediction, PredictionRun, User
 from app.services.config import (
     MODEL_NAME,
@@ -22,6 +24,7 @@ from app.services.config import (
 )
 
 DEMO_EMAIL = "a.patil@cic.gov.in"
+DEMO_PASSWORD_ENV = "DEMO_PASSWORD"
 
 
 def _ts(iso: str) -> datetime:
@@ -102,18 +105,32 @@ ALERT = {
 def _truncate(session: Session) -> None:
     session.execute(
         text(
-            "TRUNCATE complaints, case_entities, case_notes, alerts, predictions, "
-            "prediction_runs, entities, cases, users RESTART IDENTITY CASCADE"
+            "TRUNCATE audit_logs, auth_sessions, complaints, case_entities, "
+            "case_notes, alerts, predictions, prediction_runs, entities, cases, "
+            "users RESTART IDENTITY CASCADE"
         )
     )
     session.commit()
+
+
+def _demo_user() -> dict:
+    password = os.getenv(DEMO_PASSWORD_ENV)
+    if not password:
+        raise RuntimeError(
+            "DEMO_PASSWORD must be set to seed the demo investigator. "
+            "See backend/.env.example."
+        )
+    return {
+        **USER,
+        "password_hash": hash_password(password),
+    }
 
 
 def seed(session: Session) -> dict[str, int]:
     """Reload the deterministic demo state. Returns row counts."""
     _truncate(session)
 
-    user = User(**USER)
+    user = User(**_demo_user())
     session.add(user)
     cases = [Case(**row, case_type="atm_withdrawal") for row in CASES]
     session.add_all(cases)

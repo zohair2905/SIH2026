@@ -8,7 +8,7 @@ cutover, when the legacy contract is retired.
 
 from typing import Annotated
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Request
 from sqlalchemy.orm import Session
 
 from app.api import (
@@ -35,8 +35,8 @@ def _legacy_list_cases(session: SessionDep, status: str | None = None):
 
 
 @router.post("/cases", name="legacy_create_case")
-def _legacy_create_case(request: CaseCreate, session: SessionDep):
-    return api_cases.create_case(request, session)
+def _legacy_create_case(request: CaseCreate, session: SessionDep, http: Request):
+    return api_cases.create_case(request, session, http)
 
 
 @router.get("/cases/{case_id}", name="legacy_get_case")
@@ -45,8 +45,10 @@ def _legacy_get_case(case_id: str, session: SessionDep):
 
 
 @router.patch("/cases/{case_id}", name="legacy_update_case")
-def _legacy_update_case(case_id: str, request: CaseStatusUpdate, session: SessionDep):
-    return api_cases.update_case(case_id, request, session)
+def _legacy_update_case(
+    case_id: str, request: CaseStatusUpdate, session: SessionDep, http: Request
+):
+    return api_cases.update_case(case_id, request, session, http)
 
 
 @router.get("/alerts", name="legacy_list_alerts")
@@ -64,8 +66,10 @@ def _legacy_get_alert(alert_id: int, session: SessionDep):
 
 
 @router.patch("/alerts/{alert_id}", name="legacy_update_alert")
-def _legacy_update_alert(alert_id: int, request: AlertStatusUpdate, session: SessionDep):
-    return api_alerts.update_alert(alert_id, request, session)
+def _legacy_update_alert(
+    alert_id: int, request: AlertStatusUpdate, session: SessionDep, http: Request
+):
+    return api_alerts.update_alert(alert_id, request, http, session)
 
 
 @router.get("/heatmap", name="legacy_get_heatmap")
@@ -84,8 +88,8 @@ def _legacy_analytics(session: SessionDep):
 
 
 @router.post("/cases/{case_id}/predict", name="legacy_predict_case")
-def _legacy_predict_case(case_id: str, session: SessionDep):
-    return api_cases.predict_case(case_id, session)
+def _legacy_predict_case(case_id: str, session: SessionDep, http: Request):
+    return api_cases.predict_case(case_id, session, http)
 
 
 @router.get("/predictions/{prediction_id}", name="legacy_get_prediction")
@@ -102,6 +106,7 @@ def _legacy_get_transaction(transaction_id: str, session: SessionDep):
 def _legacy_predict(
     request: PredictionRequest,
     session: SessionDep,
+    http: Request,
     case_id: str | None = None,
 ):
-    return api_predictions.predict(request, case_id=case_id, session=session)
+    return api_predictions.predict(request, session, http, case_id=case_id)

@@ -5,12 +5,16 @@ from typing import Any
 from sqlalchemy import func, select, update
 from sqlalchemy.orm import Session
 
+from app.core.security import generate_token, token_digest
 from app.db.models import (
     Alert,
+    AuditLog,
+    AuthSession,
     Case,
     CaseNote,
     Prediction,
     PredictionRun,
+    User,
     utcnow,
 )
 from app.services.config import PREDICTION_ID_PREFIX, severity_for_score
@@ -446,3 +450,106 @@ class AnalyticsRepository:
             }
             for row in rows
         ]
+
+class UserRepository:
+    def __init__(self, session: Session) -> None:
+        self.session = session
+
+    def by_email(self, email: str) -> User | None:
+        return self.session.scalar(
+            select(User).where(func.lower(User.email) == email.strip().lower())
+        )
+
+    def get(self, user_id: int) -> User | None:
+        return self.session.get(User, user_id)
+
+
+class AuthRepository:
+    def __init__(self, session: Session, ttl_hours: int = 12) -> None:
+        self.session = session
+        self.ttl_hours = ttl_hours
+
+    def create_session(
+        self, user_id: int, *, ip_address: str | None = None
+    ) -> str:
+        from datetime import timedelta
+
+        token = generate_token()
+        self.session.add(
+            AuthSession(
+                user_id=user_id,
+                token_hash=token_digest(token),
+                ip_address=ip_address,
+                expires_at=utcnow() + timedelta(hours=self.ttl_hours),
+            )
+        )
+        self.session.commit()
+        return token
+
+    def user_for_token(self, token: str) -> User | None:
+        session_row = self.session.scalar(
+            select(AuthSession).where(AuthSession.token_hash == token_digest(token))
+        )
+        if session_row is None:
+            return None
+        if session_row.revoked_at is not None:
+            return None
+        if session_row.expires_at is not None and session_row.expires_at <= utcnow():
+            return None
+        return self.session.scalar(
+            select(User).where(
+                User.id == session_row.user_id, User.is_active.is_(True)
+            )
+        )
+
+    def revoke(self, token: str) -> None:
+        session_row = self.session.scalar(
+            select(AuthSession).where(AuthSession.token_hash == token_digest(token))
+        )
+        if session_row is not None and session_row.revoked_at is None:
+            session_row.revoked_at = utcnow()
+            self.session.commit()
+
+
+class AuditRepository:
+    def __init__(self, session: Session) -> None:
+        self.session = session
+
+    def record(
+        self,
+        *,
+        user_id: int | None = None,
+        actor: str | None = None,
+        action: str,
+        resource_type: str,
+        resource_id: str | None = None,
+        metadata: dict[str, Any] | None = None,
+        ip_address: str | None = None,
+    ) -> AuditLog:
+        row = AuditLog(
+            user_id=user_id,
+            actor=actor,
+            action=action,
+            resource_type=resource_type,
+            resource_id=resource_id,
+            details=metadata or {},
+            ip_address=ip_address,
+        )
+        self.session.add(row)
+        self.session.commit()
+        self.session.refresh(row)
+        return row
+
+    def list(self, limit: int = 200) -> list[AuditLog]:
+        stmt = select(AuditLog).order_by(
+            AuditLog.created_at.desc(), AuditLog.id.desc()
+        )
+        stmt = stmt.limit(limit)
+        return list(self.session.scalars(stmt))
+
+    def count(self) -> int:
+        return int(
+            self.session.execute(
+                select(func.count()).select_from(AuditLog)
+            ).scalar_one()
+        )

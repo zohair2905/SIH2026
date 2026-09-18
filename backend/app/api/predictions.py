@@ -2,10 +2,11 @@ from __future__ import annotations
 
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.api.audit_logs import audit_action
 from app.api.serializers import to_prediction_item, to_prediction_run_response
 from app.core.exceptions import AppError, NotFoundError, ValidationError
 from app.db.models import Prediction
@@ -57,6 +58,7 @@ def _items_for_run(session: Session, run_id: int) -> list[dict]:
 def predict(
     request: PredictionRequest,
     session: SessionDep,
+    http: Request,
     case_id: str | None = None,
 ):
     """Compatibility-suffixed endpoint; persists a run only when case_id is given."""
@@ -75,6 +77,16 @@ def predict(
         RuntimeError,
     ) as exc:
         raise_http_from(exc)
+
+    if run is not None:
+        audit_action(
+            http,
+            session,
+            action="prediction.executed",
+            resource_type="prediction",
+            resource_id=run.prediction_id,
+            metadata={"case_id": case_id},
+        )
 
     return PredictionResponse(
         transaction_id=payload["transaction_id"],

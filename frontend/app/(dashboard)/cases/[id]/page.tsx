@@ -33,7 +33,7 @@ import {
   updateCaseStatus,
 } from "@/lib/api/cases";
 import { getPredictionRun } from "@/lib/api/predictions";
-import { getSession } from "@/lib/auth";
+import { isOperator, useSession } from "@/lib/auth";
 import type {
   CaseNetwork,
   CaseNote,
@@ -115,6 +115,8 @@ function NodeItem({ node }: { node: NetworkNode }) {
 export default function CaseDetailsPage() {
   const params = useParams<{ id: string }>();
   const id = Array.isArray(params.id) ? params.id[0] : params.id;
+  const session = useSession();
+  const canOperate = isOperator(session?.role);
 
   const [detail, setDetail] = useState<CaseRecord | null>(null);
   const [prediction, setPrediction] = useState<PredictionRun | null>(null);
@@ -185,7 +187,7 @@ export default function CaseDetailsPage() {
     if (!trimmed) {
       return;
     }
-    const actor = getSession()?.name ?? "Unnamed investigator";
+    const actor = session?.name ?? "Investigator";
     const created = await addNote(id, trimmed, actor);
     if (created === null) {
       toast.error("Could not record the note.");
@@ -288,27 +290,29 @@ export default function CaseDetailsPage() {
           </p>
         </div>
 
-        <div className="flex flex-wrap gap-2">
-          <select
-            className="h-9 rounded-md border border-input bg-background px-3 text-sm"
-            value={detail.status}
-            onChange={(e) =>
-              void handleStatusChange(e.target.value as CaseStatusValue)
-            }
-            aria-label="Update case status"
-          >
-            <option value="open">Open</option>
-            <option value="investigating">Investigating</option>
-            <option value="resolved">Resolved</option>
-            <option value="closed">Closed</option>
-          </select>
-          <Button
-            onClick={() => void handleRunPrediction()}
-            disabled={runningPrediction}
-          >
-            {runningPrediction ? "Running…" : "Run Prediction"}
-          </Button>
-        </div>
+        {canOperate && (
+          <div className="flex flex-wrap gap-2">
+            <select
+              className="h-9 rounded-md border border-input bg-background px-3 text-sm"
+              value={detail.status}
+              onChange={(e) =>
+                void handleStatusChange(e.target.value as CaseStatusValue)
+              }
+              aria-label="Update case status"
+            >
+              <option value="open">Open</option>
+              <option value="investigating">Investigating</option>
+              <option value="resolved">Resolved</option>
+              <option value="closed">Closed</option>
+            </select>
+            <Button
+              onClick={() => void handleRunPrediction()}
+              disabled={runningPrediction}
+            >
+              {runningPrediction ? "Running…" : "Run Prediction"}
+            </Button>
+          </div>
+        )}
       </div>
 
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
@@ -539,19 +543,21 @@ export default function CaseDetailsPage() {
                 </ul>
               )}
 
-              <form onSubmit={handleAddNote} className="space-y-2">
-                <Label htmlFor="newNote">Add a note</Label>
-                <textarea
-                  id="newNote"
-                  className="min-h-20 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
-                  placeholder="Record an action, a finding or a follow-up…"
-                  value={noteText}
-                  onChange={(e) => setNoteText(e.target.value)}
-                />
-                <Button type="submit" size="sm">
-                  <Plus className="size-4" /> Add Note
-                </Button>
-              </form>
+              {canOperate && (
+                <form onSubmit={handleAddNote} className="space-y-2">
+                  <Label htmlFor="newNote">Add a note</Label>
+                  <textarea
+                    id="newNote"
+                    className="min-h-20 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                    placeholder="Record an action, a finding or a follow-up…"
+                    value={noteText}
+                    onChange={(e) => setNoteText(e.target.value)}
+                  />
+                  <Button type="submit" size="sm">
+                    <Plus className="size-4" /> Add Note
+                  </Button>
+                </form>
+              )}
             </div>
           </Panel>
         </div>

@@ -14,6 +14,7 @@ import {
 } from "lucide-react";
 
 import { cn } from "@/lib/utils";
+import { isAdmin, useSession } from "@/lib/auth";
 
 const navItems = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
@@ -22,18 +23,22 @@ const navItems = [
   { href: "/gis", label: "GIS Intelligence", icon: Map },
   { href: "/alerts", label: "Alerts", icon: Bell },
   { href: "/reports", label: "Reports", icon: ScrollText },
-  { href: "/users", label: "Users", icon: Users },
-  { href: "/audit-logs", label: "Audit Logs", icon: ScrollText },
+  { href: "/users", label: "Users", icon: Users, adminOnly: true },
+  { href: "/audit-logs", label: "Audit Logs", icon: ScrollText, adminOnly: true },
 ];
 
 export function TopNav() {
   const pathname = usePathname();
+  const session = useSession();
+  const visibleItems = navItems.filter(
+    (item) => !item.adminOnly || isAdmin(session?.role)
+  );
 
   return (
     <nav className="bg-navy-deep text-white">
       <div className="mx-auto flex max-w-[1360px] items-center justify-between gap-6 px-6">
         <div className="flex flex-1 flex-wrap items-center">
-          {navItems.map(({ href, label, icon: Icon }) => {
+          {visibleItems.map(({ href, label, icon: Icon }) => {
             const isActive =
               pathname === href || pathname.startsWith(`${href}/`);
 

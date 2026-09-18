@@ -1,6 +1,28 @@
-import { Bell, ShieldCheck } from "lucide-react";
+"use client";
+
+import { useRouter } from "next/navigation";
+import { Bell, LogOut, ShieldCheck } from "lucide-react";
+
+import { logout } from "@/lib/api/auth";
+import { useSession } from "@/lib/auth";
 
 export function Header() {
+  const router = useRouter();
+  const session = useSession();
+
+  const initials = (session?.name ?? "O")
+    .split(" ")
+    .map((part) => part[0])
+    .filter(Boolean)
+    .slice(0, 2)
+    .join("")
+    .toUpperCase();
+
+  const handleLogout = async () => {
+    await logout();
+    router.replace("/login");
+  };
+
   return (
     <header className="bg-navy text-white">
       <div className="mx-auto flex max-w-[1360px] items-center justify-between gap-6 px-6 py-3.5">
@@ -46,15 +68,23 @@ export function Header() {
 
           <div className="flex items-center gap-2.5">
             <div className="flex size-9 items-center justify-center rounded-full bg-white/15 text-sm font-bold">
-              AP
+              {initials}
             </div>
-            <div className="hidden leading-tight sm:block">
-              <strong className="block text-xs">Insp. A. Patil</strong>
-              <span className="block text-[11px] text-white/70">
-                Maharashtra Police
+            <div className="hidden leading-tight sm:block max-w-44">
+              <strong className="block truncate text-xs">{session?.name}</strong>
+              <span className="block truncate text-[11px] text-white/70">
+                {session?.org ?? "Officer"}
               </span>
             </div>
-            <span className="hidden text-white/70 sm:block">⌄</span>
+            <button
+              type="button"
+              onClick={() => void handleLogout()}
+              className="rounded-md p-1.5 text-white/70 transition-colors hover:bg-white/10 hover:text-white"
+              aria-label="Sign out"
+              title="Sign out"
+            >
+              <LogOut className="size-4" />
+            </button>
           </div>
         </div>
       </div>

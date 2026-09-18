@@ -3,21 +3,33 @@
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 
-import { getSession } from "@/lib/auth";
+import { getMe } from "@/lib/api/auth";
+import { clearSession } from "@/lib/auth";
 
 export function AuthGuard({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const [checked, setChecked] = useState(false);
 
   useEffect(() => {
-    if (!getSession()) {
-      router.replace("/login");
-      return;
-    }
+    let mounted = true;
 
-    const timer = window.setTimeout(() => setChecked(true), 0);
+    getMe().then((result) => {
+      if (!mounted) {
+        return;
+      }
 
-    return () => window.clearTimeout(timer);
+      if (!result.ok) {
+        clearSession();
+        router.replace("/login");
+        return;
+      }
+
+      setChecked(true);
+    });
+
+    return () => {
+      mounted = false;
+    };
   }, [router]);
 
   if (!checked) {

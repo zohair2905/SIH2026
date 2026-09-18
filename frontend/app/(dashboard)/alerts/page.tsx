@@ -29,6 +29,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { acknowledgeAlert, getAlerts, resolveAlert } from "@/lib/api/alerts";
+import { isOperator, useSession } from "@/lib/auth";
 import type { AlertRecord, AlertStatus } from "@/types";
 
 function formatDateTime(value: string): string {
@@ -44,6 +45,8 @@ function riskPercent(score: number): string {
 }
 
 export default function AlertsPage() {
+  const session = useSession();
+  const canOperate = isOperator(session?.role);
   const [alerts, setAlerts] = useState<AlertRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [offline, setOffline] = useState(false);
@@ -289,7 +292,7 @@ export default function AlertsPage() {
                         >
                           <Eye className="size-3.5" /> View
                         </Button>
-                        {isOpen(alert.status) && (
+                        {isOpen(alert.status) && canOperate && (
                           <Button
                             size="sm"
                             onClick={() => void handleAcknowledge(alert.alert_id)}
@@ -297,7 +300,7 @@ export default function AlertsPage() {
                             Acknowledge
                           </Button>
                         )}
-                        {isAcknowledged(alert.status) && (
+                        {isAcknowledged(alert.status) && canOperate && (
                           <Button
                             size="sm"
                             className="bg-green-700 hover:bg-green-800"
@@ -430,14 +433,14 @@ export default function AlertsPage() {
             <Button variant="outline" onClick={() => setSelectedAlert(null)}>
               Close
             </Button>
-            {selectedAlert && isOpen(selectedAlert.status) && (
+            {selectedAlert && isOpen(selectedAlert.status) && canOperate && (
               <Button
                 onClick={() => void handleAcknowledge(selectedAlert.alert_id)}
               >
                 Acknowledge Alert
               </Button>
             )}
-            {selectedAlert && isAcknowledged(selectedAlert.status) && (
+            {selectedAlert && isAcknowledged(selectedAlert.status) && canOperate && (
               <Button
                 className="bg-green-700 hover:bg-green-800"
                 onClick={() => void handleResolve(selectedAlert.alert_id)}

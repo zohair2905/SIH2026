@@ -2,9 +2,10 @@ from __future__ import annotations
 
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.orm import Session
 
+from app.api.audit_logs import audit_action
 from app.api.predictions import _items_for_run, raise_http_from, RUN_NOTE
 from app.api.serializers import (
     to_case_note_response,
@@ -39,7 +40,7 @@ SessionDep = Annotated[Session, Depends(get_session)]
 
 
 @router.post("", response_model=CaseResponse)
-def create_case(request: CaseCreate, session: SessionDep):
+def create_case(request: CaseCreate, session: SessionDep, http: Request):
     try:
         case = CaseService(session, get_store()).create(
             request.transaction_id,
@@ -51,6 +52,14 @@ def create_case(request: CaseCreate, session: SessionDep):
         )
     except KeyError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
+    audit_action(
+        http,
+        session,
+        action="case.created",
+        resource_type="case",
+        resource_id=case.case_id,
+        metadata={"priority": request.priority, "case_type": request.case_type},
+    )
     return to_case_response(case)
 
 
@@ -64,7 +73,7 @@ def list_cases(session: SessionDep, status: str | None = None):
 
 
 @router.post("/{case_id}/predict", response_model=PredictionRunResponse)
-def predict_case(case_id: str, session: SessionDep):
+def predict_case(case_id: str, session: SessionDep, http: Request):
     """Run a full top-K prediction for a case (blueprint 19)."""
     case = CaseRepository(session).get(case_id)
     if case is None:
@@ -88,6 +97,14 @@ def predict_case(case_id: str, session: SessionDep):
     ) as exc:
         raise_http_from(exc)
 
+    audit_action(
+        http,
+        session,
+        action="prediction.executed",
+        resource_type="prediction",
+        resource_id=run.prediction_id,
+        metadata={"case_id": case_id, "model_name": run.model_name},
+    )
     return to_prediction_run_response(
         run, _items_for_run(session, run.id), note=RUN_NOTE
     )
@@ -141,12 +158,22 @@ def list_case_notes(case_id: str, session: SessionDep):
 
 @router.post("/{case_id}/notes", response_model=CaseNoteResponse)
 def create_case_note(
-    case_id: str, request: CaseNoteCreate, session: SessionDep
+    case_id: str, request: CaseNoteCreate, session: SessionDep, http: Request
 ):
     if CaseRepository(session).get(case_id) is None:
         raise HTTPException(status_code=404, detail="Case not found")
-    actor = request.actor.strip() if request.actor else None
+    user = getattr(http.state, "user", None)
+    actor_label = user.email if user is not None else None
+    actor = request.actor.strip() if request.actor else actor_label
     note = CaseNoteRepository(session).add(case_id, request.note, actor or None)
+    audit_action(
+        http,
+        session,
+        action="case.note_created",
+        resource_type="case_note",
+        resource_id=str(note.id),
+        metadata={"case_id": case_id},
+    )
     return to_case_note_response(note)
 
 
@@ -160,9 +187,19 @@ def get_case(case_id: str, session: SessionDep):
 
 
 @router.patch("/{case_id}", response_model=CaseResponse)
-def update_case(case_id: str, request: CaseStatusUpdate, session: SessionDep):
+def update_case(
+    case_id: str, request: CaseStatusUpdate, session: SessionDep, http: Request
+):
     case = CaseRepository(session).update_status(case_id, request.status)
     if case is None:
         raise HTTPException(status_code=404, detail="Case not found")
+    audit_action(
+        http,
+        session,
+        action="case.status_changed",
+        resource_type="case",
+        resource_id=case_id,
+        metadata={"status": request.status},
+    )
     prediction = PredictionRepository(session).current_top_prediction(case_id)
     return to_case_response(case, prediction)

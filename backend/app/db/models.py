@@ -28,7 +28,8 @@ def utcnow() -> datetime:
 
 
 class User(Base):
-    """Minimal identity model. Authentication/authorization arrives in Phase 4."""
+    """Investigator/analyst identity. Passwords are scrypt hashes; role
+    gates privileged operations."""
 
     __tablename__ = "users"
     __table_args__ = (
@@ -39,6 +40,7 @@ class User(Base):
     badge: Mapped[str | None] = mapped_column(String(32), unique=True)
     name: Mapped[str | None] = mapped_column(String(100))
     email: Mapped[str] = mapped_column(String(255), unique=True, nullable=False)
+    password_hash: Mapped[str | None] = mapped_column(String(255))
     role: Mapped[str] = mapped_column(
         String(32), nullable=False, server_default="investigator"
     )
@@ -50,6 +52,55 @@ class User(Base):
     )
 
     assigned_cases: Mapped[list[Case]] = relationship(back_populates="assigned_officer")  # type: ignore[name-defined]
+
+
+class AuthSession(Base):
+    """Opaque bearer-token session. Only the token's SHA-256 digest is stored."""
+
+    __tablename__ = "auth_sessions"
+    __table_args__ = (
+        Index("ix_auth_sessions_user_id", "user_id"),
+        Index("ix_auth_sessions_expires_at", "expires_at"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    user_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+    )
+    token_hash: Mapped[str] = mapped_column(String(64), unique=True, nullable=False)
+    ip_address: Mapped[str | None] = mapped_column(String(45))
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=utcnow
+    )
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class AuditLog(Base):
+    """Append-only security audit trail (login, case, prediction, alert, notes)."""
+
+    __tablename__ = "audit_logs"
+    __table_args__ = (
+        Index("ix_audit_logs_created_at", "created_at"),
+        Index("ix_audit_logs_user_id", "user_id"),
+        Index("ix_audit_logs_resource_type", "resource_type"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    user_id: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("users.id", ondelete="SET NULL")
+    )
+    actor: Mapped[str | None] = mapped_column(String(255))
+    action: Mapped[str] = mapped_column(String(64), nullable=False)
+    resource_type: Mapped[str] = mapped_column(String(64), nullable=False)
+    resource_id: Mapped[str | None] = mapped_column(String(64))
+    details: Mapped[dict] = mapped_column(
+        JSONB, nullable=False, server_default=text("'{}'::jsonb")
+    )
+    ip_address: Mapped[str | None] = mapped_column(String(45))
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=utcnow
+    )
 
 
 class Case(Base):

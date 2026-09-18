@@ -1,30 +1,42 @@
+import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
 
-import type { AuthSession } from "@/lib/auth";
-
-const demoUsers: Record<string, AuthSession> = {
-  "a.patil@cic.gov.in": {
-    name: "Insp. A. Patil",
-    badge: "AP",
-    email: "a.patil@cic.gov.in",
-    org: "Maharashtra Police",
-    loginAt: new Date().toLocaleString("en-IN"),
-  },
-};
+import { backendUrl, sessionCookieName, tokenTtlSeconds } from "@/lib/env";
 
 export async function POST(request: Request) {
-  const body = await request.json().catch(() => null);
-  const email = (body?.email ?? "").toString().toLowerCase();
-  const password = (body?.password ?? "").toString();
+  const body = await request.json().catch(() => ({}));
 
-  const user = demoUsers[email];
+  const upstream = await fetch(`${backendUrl()}/api/auth/login`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+    cache: "no-store",
+  });
 
-  if (!user || password.length < 4) {
+  const data = await upstream.json().catch(() => ({}));
+
+  if (!upstream.ok) {
     return NextResponse.json(
-      { detail: "Invalid user ID or password." },
-      { status: 401 }
+      { detail: data?.detail ?? "Invalid user ID or password." },
+      { status: upstream.status }
     );
   }
 
-  return NextResponse.json({ user });
+  const token = data?.access_token;
+  if (!token) {
+    return NextResponse.json(
+      { detail: "The authentication service returned no session." },
+      { status: 502 }
+    );
+  }
+
+  (await cookies()).set(sessionCookieName(), token, {
+    httpOnly: true,
+    sameSite: "lax",
+    secure: process.env.NODE_ENV === "production",
+    path: "/",
+    maxAge: tokenTtlSeconds(),
+  });
+
+  return NextResponse.json({ user: data.user });
 }
