@@ -1,15 +1,23 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from app.api.analytics import router as analytics_router
+
 from app.api.alerts import router as alerts_router
+from app.api.analytics import router as analytics_router
 from app.api.cases import router as cases_router
 from app.api.health import router as health_router
 from app.api.heatmap import router as heatmap_router
 from app.api.predictions import router as predictions_router
 from app.api.transactions import router as transactions_router
+from app.core.config import settings
+from app.core.exceptions import register_exception_handlers
+from app.core.logging import configure_logging, get_logger
+from app.core.middleware import RequestIDMiddleware
 from app.database.app_db import get_app_db
 from app.services.config import MODEL_VERSION
 from app.services.model_service import get_model_service
+
+configure_logging(settings.log_level)
+log = get_logger("main")
 
 app = FastAPI(
     title="SIH 26184 - Proactive ATM Withdrawal Intelligence API",
@@ -27,6 +35,7 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+app.add_middleware(RequestIDMiddleware)
 
 app.include_router(health_router)
 app.include_router(transactions_router)
@@ -36,7 +45,13 @@ app.include_router(alerts_router)
 app.include_router(heatmap_router)
 app.include_router(analytics_router)
 
+register_exception_handlers(app)
+
+
 @app.on_event("startup")
 def startup_event() -> None:
     get_app_db()
-    get_model_service().load()
+    try:
+        get_model_service().load()
+    except Exception:
+        log.exception("Model artifact unavailable; API running without ML inference.")

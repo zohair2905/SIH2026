@@ -41,6 +41,24 @@ python scripts\preflight.py
 python scripts\test_inference.py
 ```
 
+## 3b. Development & testing
+
+Copy `.env.example` to `.env` to override defaults (not required; sensible defaults exist). The API starts in degraded mode without the ML artifact so `/health` reports `model_loaded: false`; place the model at `ml/rf_baseline_model.joblib` to enable prediction.
+
+Optional local PostgreSQL/PostGIS target DB (used from the persistence migration onward):
+
+```bat
+docker compose up -d
+```
+
+Dev-only dependencies (tests + lint) live in `requirements-dev.txt`:
+
+```bat
+python -m pip install -r requirements-dev.txt
+python -m pytest
+ruff check app tests
+```
+
 ## 4. Start API
 
 ```bat
