@@ -30,6 +30,13 @@ with TestClient(app) as client:
     )
     print("POST /api/predictions/predict", r.status_code)
     print(r.json())
+    if r.status_code == 200:
+        prediction_id = r.json().get("prediction_id")
+        r = client.get(f"/api/predictions/{prediction_id}")
+        print("GET /api/predictions/{id}", r.status_code, r.json())
+    r = client.post(f"/api/cases/{case_id}/predict")
+    print("POST /api/cases/{id}/predict", r.status_code)
+    print(r.json())
     r = client.get(f"/api/heatmap?case_id={case_id}")
     print("GET /api/heatmap", r.status_code, r.json())
     r = client.get("/api/alerts")

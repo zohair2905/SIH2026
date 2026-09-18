@@ -12,7 +12,14 @@ from datetime import datetime
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
-from app.db.models import Alert, Case, Prediction, User
+from app.db.models import Alert, Case, Prediction, PredictionRun, User
+from app.services.config import (
+    MODEL_NAME,
+    MODEL_VERSION,
+    PREDICTION_ID_PREFIX,
+    prediction_window,
+    severity_for_score,
+)
 
 DEMO_EMAIL = "a.patil@cic.gov.in"
 
@@ -95,8 +102,8 @@ ALERT = {
 def _truncate(session: Session) -> None:
     session.execute(
         text(
-            "TRUNCATE complaints, case_entities, alerts, predictions, entities, "
-            "cases, users RESTART IDENTITY CASCADE"
+            "TRUNCATE complaints, case_entities, alerts, predictions, "
+            "prediction_runs, entities, cases, users RESTART IDENTITY CASCADE"
         )
     )
     session.commit()
@@ -112,12 +119,41 @@ def seed(session: Session) -> dict[str, int]:
     session.add_all(cases)
     session.flush()
 
+    window_start, window_end = prediction_window(_ts(_SEED_TS))
+    ordered = sorted(PREDICTIONS, key=lambda row: row["rank"])
+    run = PredictionRun(
+        prediction_id=f"{PREDICTION_ID_PREFIX}-CASE-E2CAEBEA64-1",
+        case_id="CASE-E2CAEBEA64",
+        transaction_id="TXN000000294",
+        seq=1,
+        model_name=MODEL_NAME,
+        model_version=MODEL_VERSION,
+        window_start=window_start,
+        window_end=window_end,
+        confidence=max(
+            0.0, float(ordered[0]["risk_score"]) - float(ordered[1]["risk_score"])
+        ),
+        triggered_at=_ts(_SEED_TS),
+    )
+    session.add(run)
+    session.flush()
+
     prediction_rows = []
-    for row in PREDICTIONS:
+    for position, row in enumerate(PREDICTIONS):
+        next_score = (
+            sorted(PREDICTIONS, key=lambda r: r["rank"])[position + 1]["risk_score"]
+            if position + 1 < len(PREDICTIONS)
+            else 0.0
+        )
+        confidence = max(0.0, float(row["risk_score"]) - float(next_score))
         prediction_rows.append(
             Prediction(
+                run_id=run.id,
                 case_id="CASE-E2CAEBEA64",
                 transaction_id="TXN000000294",
+                confidence=confidence,
+                risk_severity=severity_for_score(float(row["risk_score"])),
+                evidence={"top_factors": [], "driver": "Seeded demo state.", "heuristic": True},
                 created_at=_ts(_SEED_TS),
                 **row,
             )
