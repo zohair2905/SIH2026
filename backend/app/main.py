@@ -4,6 +4,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.api.alerts import router as alerts_router
 from app.api.analytics import router as analytics_router
 from app.api.cases import router as cases_router
+from app.api.compat import router as compat_router
 from app.api.health import router as health_router
 from app.api.heatmap import router as heatmap_router
 from app.api.predictions import router as predictions_router
@@ -12,7 +13,7 @@ from app.core.config import settings
 from app.core.exceptions import register_exception_handlers
 from app.core.logging import configure_logging, get_logger
 from app.core.middleware import RequestIDMiddleware
-from app.database.app_db import get_app_db
+from app.db.session import check_database
 from app.services.config import MODEL_VERSION
 from app.services.model_service import get_model_service
 
@@ -44,13 +45,17 @@ app.include_router(predictions_router)
 app.include_router(alerts_router)
 app.include_router(heatmap_router)
 app.include_router(analytics_router)
+app.include_router(compat_router)
 
 register_exception_handlers(app)
 
 
 @app.on_event("startup")
 def startup_event() -> None:
-    get_app_db()
+    try:
+        check_database()
+    except Exception:
+        log.exception("Application database unreachable; API running without persistence.")
     try:
         get_model_service().load()
     except Exception:

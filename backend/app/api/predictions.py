@@ -1,7 +1,13 @@
 from __future__ import annotations
-from fastapi import APIRouter, HTTPException
-from app.database.app_db import get_app_db
+
+from typing import Annotated
+
+from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy.orm import Session
+
 from app.database.database import get_store
+from app.db.repositories import CaseRepository, PredictionRepository
+from app.db.session import get_session
 from app.schemas.prediction import PredictionRequest, PredictionResponse
 from app.services.alert_service import create_prediction_alerts
 from app.services.candidate_service import CandidateService
@@ -11,10 +17,17 @@ from app.services.model_service import get_model_service
 from app.services.ranking_service import RankingService
 from app.services.transaction_service import TransactionService
 
-router = APIRouter(prefix="/predictions", tags=["predictions"])
+router = APIRouter(prefix="/api/predictions", tags=["predictions"])
+
+SessionDep = Annotated[Session, Depends(get_session)]
+
 
 @router.post("/predict", response_model=PredictionResponse)
-def predict(request: PredictionRequest, case_id: str | None = None):
+def predict(
+    request: PredictionRequest,
+    session: SessionDep,
+    case_id: str | None = None,
+):
     store = get_store()
     transaction_service = TransactionService(store)
     candidate_service = CandidateService(store)
@@ -61,14 +74,15 @@ def predict(request: PredictionRequest, case_id: str | None = None):
         })
 
     if case_id:
-        db = get_app_db()
-        case = db.get_case(case_id)
+        case = CaseRepository(session).get(case_id)
         if case is None:
             raise HTTPException(status_code=404, detail="Case not found")
-        if str(case["transaction_id"]) != str(request.transaction_id):
+        if str(case.transaction_id) != str(request.transaction_id):
             raise HTTPException(status_code=400, detail="Case transaction_id does not match prediction transaction_id")
-        db.save_predictions(case_id, request.transaction_id, predictions)
-        create_prediction_alerts(db, case_id, request.transaction_id, predictions)
+        created = PredictionRepository(session).replace_for_case(
+            case_id, request.transaction_id, predictions
+        )
+        create_prediction_alerts(session, case_id, request.transaction_id, created)
 
     return PredictionResponse(
         transaction_id=request.transaction_id,
