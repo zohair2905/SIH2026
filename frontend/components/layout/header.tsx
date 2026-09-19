@@ -1,14 +1,30 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Bell, LogOut, ShieldCheck } from "lucide-react";
 
 import { logout } from "@/lib/api/auth";
+import { getAlerts } from "@/lib/api/alerts";
 import { useSession } from "@/lib/auth";
 
 export function Header() {
   const router = useRouter();
   const session = useSession();
+  const [newAlertCount, setNewAlertCount] = useState(0);
+
+  useEffect(() => {
+    let active = true;
+    getAlerts().then((result) => {
+      if (!active || result.mocked) {
+        return;
+      }
+      setNewAlertCount(result.data.filter((alert) => alert.status === "new").length);
+    });
+    return () => {
+      active = false;
+    };
+  }, []);
 
   const initials = (session?.name ?? "O")
     .split(" ")
@@ -60,10 +76,18 @@ export function Header() {
           <div className="hidden h-8 w-px bg-white/20 md:block" />
 
           <div className="relative">
-            <Bell className="size-5" />
-            <span className="absolute -right-2 -top-2 flex size-4 items-center justify-center rounded-full bg-red-500 text-[10px] font-bold">
-              3
-            </span>
+            <a
+              href="/alerts"
+              aria-label={`${newAlertCount} new alerts`}
+              className="block"
+            >
+              <Bell className="size-5" />
+            </a>
+            {newAlertCount > 0 && (
+              <span className="absolute -right-2 -top-2 flex size-4 items-center justify-center rounded-full bg-red-500 text-[10px] font-bold">
+                {newAlertCount}
+              </span>
+            )}
           </div>
 
           <div className="flex items-center gap-2.5">

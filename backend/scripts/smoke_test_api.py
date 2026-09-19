@@ -1,7 +1,13 @@
-"""Minimal in-process smoke test. Requires PostgreSQL and the model artifact."""
-from fastapi.testclient import TestClient
+"""Minimal in-process smoke test. Requires PostgreSQL and the model artifact.
+
+Authenticates as the seeded demo investigator (DEMO_EMAIL / $DEMO_PASSWORD)
+so every other call exercises the real auth path.
+"""
+import os
 import sys
 from pathlib import Path
+
+from fastapi.testclient import TestClient
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT) not in sys.path:
@@ -10,9 +16,22 @@ from app.main import app
 
 TRANSACTION_ID = "TXN000000294"
 
+password = os.getenv("DEMO_PASSWORD")
+if not password:
+    raise SystemExit("DEMO_PASSWORD env var required to run the smoke test")
+
 with TestClient(app) as client:
     r = client.get("/health")
     print("GET /health", r.status_code, r.json())
+    r = client.post(
+        "/api/auth/login",
+        json={"email": "a.patil@cic.gov.in", "password": password},
+    )
+    print("POST /api/auth/login", r.status_code)
+    token = r.json()["access_token"]
+    client.headers["Authorization"] = f"Bearer {token}"
+    r = client.get("/api/auth/me")
+    print("GET /api/auth/me", r.status_code, r.json())
     r = client.get(f"/api/transactions/{TRANSACTION_ID}")
     print("GET /api/transactions", r.status_code)
     payload = {

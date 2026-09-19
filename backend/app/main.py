@@ -32,6 +32,12 @@ app = FastAPI(
     ),
 )
 
+# Starlette builds the stack outside-in from the last added middleware:
+# CORSMiddleware (outermost) -> RequestIDMiddleware -> AuthMiddleware (innermost),
+# so every response, including Auth's 401/403 short-circuits, carries a
+# request_id and CORS headers.
+app.add_middleware(AuthMiddleware)
+app.add_middleware(RequestIDMiddleware)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=list(settings.cors_origins),
@@ -39,8 +45,6 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-app.add_middleware(RequestIDMiddleware)
-app.add_middleware(AuthMiddleware)
 
 app.include_router(health_router)
 app.include_router(auth_router)

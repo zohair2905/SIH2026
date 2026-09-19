@@ -9,7 +9,6 @@ import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import select
 
-from app.core.security import hash_password
 from app.db.models import User
 from app.db.repositories import AuthRepository
 from app.db.session import SessionLocal
@@ -110,31 +109,19 @@ def anon_client():
 
 @pytest.fixture()
 def admin_client(session):
-    password = os.environ.get("DEMO_PASSWORD", "Demo#2026")
-    user = User(
-        badge="ADMIN",
-        name="Admin Officer",
-        email="admin@cic.gov.in",
-        role="admin",
-        password_hash=hash_password(password),
-    )
-    session.add(user)
-    session.commit()
-    session.refresh(user)
+    """Authenticated admin client (the seeded admin user)."""
+    user = session.scalars(
+        select(User).where(User.email == seed_demo.ADMIN_EMAIL)
+    ).one()
     with _token_client(session, user) as c:
         yield c
 
 
 @pytest.fixture()
 def analyst_client(session):
-    user = User(
-        badge="ANALYST",
-        name="Analyst Officer",
-        email="analyst@cic.gov.in",
-        role="analyst",
-    )
-    session.add(user)
-    session.commit()
-    session.refresh(user)
+    """Authenticated analyst client (the seeded analyst user)."""
+    user = session.scalars(
+        select(User).where(User.email == seed_demo.ANALYST_EMAIL)
+    ).one()
     with _token_client(session, user) as c:
         yield c

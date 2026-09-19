@@ -22,11 +22,14 @@ import {
 import { toast } from "sonner";
 
 import { PageHeading } from "@/components/layout/page-heading";
+import { OfflineSampleNotice } from "@/components/ui/offline-sample-notice";
 import { Panel } from "@/components/ui/panel";
+import { useSession } from "@/lib/auth";
 import { reportChartData, initialReports } from "@/mocks/reports";
 import type { Report } from "@/types";
 
 export default function ReportsPage() {
+  const session = useSession();
   const [reports, setReports] = useState<Report[]>(initialReports);
   const [typeFilter, setTypeFilter] = useState("All");
 
@@ -40,8 +43,8 @@ export default function ReportsPage() {
       id: `RPT-2026-${916 + reports.length}`,
       name: "New Cybercrime Intelligence Report",
       type: "Risk Analysis",
-      generated: "16 Sep 2026, 15:30",
-      generatedBy: "Admin Officer",
+      generated: new Date().toLocaleString("en-IN"),
+      generatedBy: session?.name ?? "Officer",
       status: "Ready",
     };
 
@@ -75,9 +78,9 @@ export default function ReportsPage() {
       <PageHeading
         title="Reports"
         description="Generate and review cybercrime intelligence and analytical reports"
-      >
-        <span>Last updated: 16 Sep 2026, 15:30</span>
-      </PageHeading>
+      />
+
+      <OfflineSampleNotice />
 
       <div className="flex items-center gap-3 rounded-lg border border-l-4 border-border border-l-primary bg-secondary p-4">
         <div className="flex size-9 shrink-0 items-center justify-center rounded-md bg-accent text-primary">
@@ -186,7 +189,7 @@ export default function ReportsPage() {
           subtitle="Current reported cybercrime distribution"
           actions={
             <span className="rounded bg-accent px-2 py-1 text-[10px] font-semibold text-primary">
-              LIVE DATA
+              SAMPLE DATA
             </span>
           }
         >

@@ -1,6 +1,6 @@
 # SIH 26184 - Complete Backend Prototype
 
-This backend wraps the existing Random Forest ATM candidate-ranking model with case management, persistent predictions, alerts, heatmap data and analytics APIs.
+This backend wraps the existing Random Forest ATM candidate-ranking model with authentication (sessions + RBAC), audit logging, case management, persistent predictions, alerts, heatmap data and analytics APIs.
 
 ## 1. Important model contract
 
@@ -30,32 +30,46 @@ The application database is PostgreSQL with PostGIS, provided by `docker-compose
 docker compose up -d        # runs sih_postgis on localhost:5432 (sih/sih@/sihdb)
 ```
 
-Run migrations and load the deterministic demo seed (3 cases, 5 predictions, 1 alert, 1 demo user):
+Run migrations and load the deterministic demo seed (3 cases, 5 predictions, 1 alert, 3 users):
 
 ```bat
+set DEMO_PASSWORD=SomeStrongPassword
 python -m app.db.migrate upgrade
 python -m app.seeding.seed_demo
 ```
 
+`DEMO_PASSWORD` is **required** — it is the password for every seeded demo account where there is no
+hardcoded default. The three seeded roles (all use the same `DEMO_PASSWORD`):
+
+| Role | Email | Visibility |
+|------|-------|------------|
+| Investigator | `a.patil@cic.gov.in` | standard investigator workflow |
+| Analyst | `analyst@cic.gov.in` | read-only |
+| Admin | `admin@cic.gov.in` | Audit Logs (admin-only) |
+
 ## 3. Setup on Windows
 
 ```bat
-cd /d "C:\Codes And Projects\SIH\SIH_26184_backend\backend"
+cd backend
 python -m venv .venv
 .venv\Scripts\activate
 python -m pip install -r requirements.txt
+set DEMO_PASSWORD=SomeStrongPassword
 python scripts\preflight.py
 python scripts\test_inference.py
 ```
 
 ## 3b. Development & testing
 
-Copy `.env.example` to `.env` to override defaults (not required; sensible defaults exist). The API starts in degraded mode without the ML artifact so `/health` reports `model_loaded: false`; place the model at `ml/rf_baseline_model.joblib` to enable prediction.
-
-Development & testing:
+Environment variables are read from the process environment (there is no `.env` loader). Set
+`DATABASE_URL`, `DEMO_PASSWORD`, `CORS_ORIGINS`, `ACCESS_TOKEN_TTL_HOURS`, `SESSION_COOKIE_NAME` and
+`AUTH_COOKIE_SECURE` as needed; see `.env.example` for every variable and its default. The API starts
+in degraded mode without the ML artifact so `/health` reports `model_loaded: false`; place the model
+at `ml/rf_baseline_model.joblib` to enable prediction.
 
 ```bat
 docker compose up -d
+set DEMO_PASSWORD=SomeStrongPassword
 python -m app.db.migrate upgrade        # apply schema (tests auto-migrate sihdb_test)
 python -m pip install -r requirements-dev.txt
 python -m pytest                        # uses DATABASE_URL or sihdb_test on localhost
@@ -65,12 +79,28 @@ ruff check app tests
 ## 4. Start API
 
 ```bat
+set DEMO_PASSWORD=SomeStrongPassword
 uvicorn app.main:app --reload
 ```
 
 Open:
 
 `http://127.0.0.1:8000/docs`
+
+## 4b. Authentication
+
+Every route except `/health`, `/docs`, `/redoc`, `/openapi.json`, `POST /api/auth/login`
+and `POST /api/auth/logout` requires a valid session (see `app/core/middleware.py`):
+
+- `POST /api/auth/login` — body `{email, password}`. Returns `{access_token, token_type, user}`
+  and sets an httpOnly cookie.
+- `GET /api/auth/me` — current session's user.
+- `POST /api/auth/logout` — revokes the session.
+- Sessions are opaque random tokens stored as SHA-256 digests; passwords are stored
+  PCI-style hashed (scrypt + constant-time verify).
+- RBAC: `analyst` = read-only; `investigator`/`admin` = operator actions (cases, alerts,
+  predictions); `admin` only = the Audit Logs endpoint.
+- Every login/logout/operator action is written to the audit log (no secrets, no tokens).
 
 ## 5. Core API flow
 
@@ -138,17 +168,19 @@ The heatmap endpoint returns prediction-derived ATM points. It does not claim th
 
 Analytics combine persisted prototype case/prediction/alert data with basic transaction/ATM dataset distributions.
 
-The pre-Phase-1 route layout (`/cases`, `/alerts`, `/heatmap`, `/analytics`, `/transactions/{id}`, `/predictions/predict`) remains available as thin aliases that delegate to the `/api/*` handlers; they are removed at the Phase 5 cutover.
+The pre-Phase-1 route layout (`/cases`, `/alerts`, `/heatmap`, `/analytics`, `/transactions/{id}`, `/predictions/predict`) remains available as thin auth-gated aliases that delegate to the `/api/*` handlers for backward compatibility; prefer the `/api/*` routes.
 
 ## 6. End-to-end smoke test
 
-After placing the model, start the server and run:
+After placing the model and seeding with a `DEMO_PASSWORD`, run:
 
 ```bat
+set DEMO_PASSWORD=SomeStrongPassword
 python scripts\smoke_test_api.py
 ```
 
-It creates a case, runs prediction, persists results, creates alerts, checks heatmap data and reads analytics.
+It logs in as the seeded investigator, then exercises auth, case creation, prediction
+persistence, alerts, heatmap data and analytics.
 
 ## 7. Architecture
 
@@ -182,6 +214,10 @@ It does **not** invent a new candidate-generation algorithm for arbitrary unseen
 
 The dataset/model materials also identify the benchmark as controlled synthetic and not validated as real-world ATM-location prediction. Do not present model scores as guaranteed future withdrawal probabilities.
 
-## 9. Security before deployment
+## 9. Security status
 
-This is a prototype. Before real deployment, add authentication/authorization, audit logging, rate limiting, encrypted transport, secrets management, PII minimization, access controls and structured logs.
+Authentication, RBAC, audit logging and request-id tracing are implemented and covered by tests
+(`tests/test_auth_security.py`, `app/core/middleware.py`, `app/core/security.py`).
+
+Remaining hardening before real deployment: rate limiting / account lockout on login, encrypted
+transport (TLS), secrets management, PII minimization controls and structured-log centralization.

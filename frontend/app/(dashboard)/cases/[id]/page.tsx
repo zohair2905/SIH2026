@@ -402,10 +402,10 @@ export default function CaseDetailsPage() {
             actions={
               prediction && (
                 <Link
-                  href={`/predictions/${prediction.prediction_id}`}
+                  href="/predictions"
                   className="text-xs font-medium text-primary"
                 >
-                  View Prediction
+                  View Analytics
                 </Link>
               )
             }

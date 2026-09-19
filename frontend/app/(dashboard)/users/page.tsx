@@ -23,9 +23,12 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { initialUsers } from "@/mocks/users";
+import { useSession } from "@/lib/auth";
+import { OfflineSampleNotice } from "@/components/ui/offline-sample-notice";
 import type { PlatformUser } from "@/types";
 
 export default function UsersPage() {
+  const session = useSession();
   const [users, setUsers] = useState(initialUsers);
   const [search, setSearch] = useState("");
   const [roleFilter, setRoleFilter] = useState("All");
@@ -75,14 +78,23 @@ export default function UsersPage() {
     toast.success("User created successfully");
   };
 
+  if (session && session.role !== "admin") {
+    return (
+      <PageHeading
+        title="Users"
+        description="Administrator access only"
+      />
+    );
+  }
+
   return (
     <div className="space-y-6">
       <PageHeading
         title="Users"
         description="Manage authorized users and access permissions"
-      >
-        <span>Last updated: 16 Sep 2026, 15:30</span>
-      </PageHeading>
+      />
+
+      <OfflineSampleNotice />
 
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         {[

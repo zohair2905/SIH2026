@@ -22,6 +22,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { getAuditLogs, type AuditLogEntry } from "@/lib/api/audit-logs";
+import { useSession } from "@/lib/auth";
 
 function formatDateTime(value: string): string {
   const date = new Date(value);
@@ -32,10 +33,13 @@ function formatDateTime(value: string): string {
 }
 
 export default function AuditLogsPage() {
+  const session = useSession();
   const [logs, setLogs] = useState<AuditLogEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [selectedLog, setSelectedLog] = useState<AuditLogEntry | null>(null);
+
+  const isAdmin = session?.role === "admin";
 
   const load = useCallback(() => {
     getAuditLogs().then((entries) => {
@@ -75,6 +79,15 @@ export default function AuditLogsPage() {
         </Button>
       </PageHeading>
 
+      {!isAdmin && (
+        <p className="rounded-md border border-border bg-muted/40 px-4 py-2 text-xs text-muted-foreground">
+          You do not have permission to view audit logs. The server rejected
+          the request (403) — only administrators can access this page.
+        </p>
+      )}
+
+      {isAdmin && (
+        <>
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <div className="flex items-center gap-3 rounded-lg border border-border bg-card p-4 shadow-sm">
           <div className="flex size-10 items-center justify-center rounded-md bg-accent text-primary">
@@ -102,7 +115,7 @@ export default function AuditLogsPage() {
               Successful
             </span>
             <strong className="block text-xl text-foreground">
-              {serverTimestamps}
+              {logs.length - logs.filter((l) => l.action === "auth.login_failed").length}
             </strong>
             <small className="block text-xs text-muted-foreground">
               Events
@@ -222,6 +235,8 @@ export default function AuditLogsPage() {
           )}
         </div>
       </Panel>
+      </>
+      )}
 
       <Dialog
         open={selectedLog !== null}

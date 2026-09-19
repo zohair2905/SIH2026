@@ -1,8 +1,8 @@
 """Deterministic demo seed mirroring the committed smoke state.
 
 Reproduces the same scenario on every run (blueprint 29): 3 cases,
-5 predictions, 1 alert, 1 demo investigator. Idempotent: wipes the
-operational tables and reloads from the literals below.
+5 predictions, 1 alert, 3 users (investigator, analyst, admin).
+Idempotent: wipes the operational tables and reloads from the literals below.
 """
 
 from __future__ import annotations
@@ -24,6 +24,8 @@ from app.services.config import (
 )
 
 DEMO_EMAIL = "a.patil@cic.gov.in"
+ADMIN_EMAIL = "admin@cic.gov.in"
+ANALYST_EMAIL = "analyst@cic.gov.in"
 DEMO_PASSWORD_ENV = "DEMO_PASSWORD"
 
 
@@ -31,6 +33,8 @@ def _ts(iso: str) -> datetime:
     return datetime.fromisoformat(iso)
 
 USER = {"badge": "A.PATIL", "name": "A. Patil", "email": DEMO_EMAIL, "role": "investigator"}
+ADMIN = {"badge": "ADMIN", "name": "Admin Officer", "email": ADMIN_EMAIL, "role": "admin"}
+ANALYST = {"badge": "ANALYST", "name": "Analyst Officer", "email": ANALYST_EMAIL, "role": "analyst"}
 
 CASES = [
     {
@@ -113,25 +117,36 @@ def _truncate(session: Session) -> None:
     session.commit()
 
 
-def _demo_user() -> dict:
+def _user_with_password(profile: dict) -> dict:
     password = os.getenv(DEMO_PASSWORD_ENV)
     if not password:
         raise RuntimeError(
-            "DEMO_PASSWORD must be set to seed the demo investigator. "
+            "DEMO_PASSWORD must be set to seed demo users. "
             "See backend/.env.example."
         )
     return {
-        **USER,
+        **profile,
         "password_hash": hash_password(password),
     }
+
+
+def _demo_user() -> dict:
+    """The logged-in demo investigator; used by the test harness."""
+    return _user_with_password(USER)
 
 
 def seed(session: Session) -> dict[str, int]:
     """Reload the deterministic demo state. Returns row counts."""
     _truncate(session)
 
-    user = User(**_demo_user())
-    session.add(user)
+    session.add_all(
+        User(**profile)
+        for profile in (
+            _user_with_password(USER),
+            _user_with_password(ANALYST),
+            _user_with_password(ADMIN),
+        )
+    )
     cases = [Case(**row, case_type="atm_withdrawal") for row in CASES]
     session.add_all(cases)
     session.flush()
@@ -192,7 +207,7 @@ def seed(session: Session) -> dict[str, int]:
         "cases": len(cases),
         "predictions": len(prediction_rows),
         "alerts": 1,
-        "users": 1,
+        "users": 3,
     }
 
 

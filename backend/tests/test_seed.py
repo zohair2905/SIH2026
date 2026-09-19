@@ -19,7 +19,7 @@ def test_seed_golden_counts(session: Session) -> None:
         "cases": 3,
         "predictions": 5,
         "alerts": 1,
-        "users": 1,
+        "users": 3,
     }
 
 

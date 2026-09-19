@@ -155,7 +155,9 @@ export default function DashboardPage() {
         title="Dashboard"
         description="Real-time overview of cybercrime cases and predictive intelligence"
       >
-        <span>{loading ? "Loading…" : "Live data from backend"}</span>
+        <span>
+        {loading ? "Loading…" : offline ? "Showing offline sample data" : "Live data from backend"}
+      </span>
         <button
           type="button"
           onClick={refresh}

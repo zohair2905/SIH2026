@@ -1,36 +1,41 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# SIH 26184 - Investigator Frontend
 
-## Getting Started
+Next.js (App Router) frontend for the Predictive Cybercrime Intelligence Platform.
+Serves the demo journey: login → dashboard → alerts → case workspace → transactions →
+network → prediction run → evidence → GIS risk map → investigator actions → audit log → logout.
 
-First, run the development server:
+## Setup
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+npm install
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Environment (read at server start; secrets and cookie behaviour are managed server-side):
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+| Variable | Default | Purpose |
+|----------|---------|---------|
+| `BACKEND_URL` | `http://localhost:8000` | FastAPI backend. All `/api/*` data calls are proxied to it via `next.config.ts` rewrites using the same session cookie. |
+| `SESSION_COOKIE_NAME` | `sih_access_token` | Name of the httpOnly session cookie; must match the backend's `SESSION_COOKIE_NAME`. |
+| `ACCESS_TOKEN_TTL_HOURS` | `12` | Session lifetime (mirrors backend TTL). |
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+## Run
 
-## Learn More
+```bash
+npm run dev            # http://localhost:3000
+```
 
-To learn more about Next.js, take a look at the following resources:
+Start the backend first (see `backend/README.md`, incl. `DEMO_PASSWORD` + seed). Log in with one of
+the seeded accounts (investigator `a.patil@cic.gov.in`, analyst, or admin — all share the seeded
+`DEMO_PASSWORD`). The data plane (dashboard, cases, alerts, GIS, transactions, predictions) and the
+audit log (admin-only) are served from the backend through `/api/*` rewrites; the session cookie set
+by the login proxy is forwarded, so the browser never needs a raw token.
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+Pages that have no backend API yet (Predictions overview, Reports, Users) show clearly labelled
+offline sample data.
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+## Checks
 
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+```bash
+npm run lint
+npm run build
+```

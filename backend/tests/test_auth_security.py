@@ -24,7 +24,7 @@ def _count(session: Session) -> int:
 # --- Authentication -----------------------------------------------------------
 
 
-def test_login_success_returns_token_and_user_never_password(anon_client):
+def test_login_success_returns_token_and_user_never_password(session, anon_client):
     response = anon_client.post(
         "/api/auth/login",
         json={"email": DEMO_EMAIL, "password": DEMO_PASSWORD},
@@ -39,7 +39,7 @@ def test_login_success_returns_token_and_user_never_password(anon_client):
     assert "hash" not in response.text.lower()
 
 
-def test_login_wrong_password_and_unknown_email_identical(anon_client):
+def test_login_wrong_password_and_unknown_email_identical(session, anon_client):
     unknown = anon_client.post(
         "/api/auth/login",
         json={"email": "nobody@cic.gov.in", "password": DEMO_PASSWORD},
@@ -80,7 +80,7 @@ def test_me_authenticated_and_unauthenticated(client, anon_client):
         assert bad.get("/api/auth/me").status_code == 401
 
 
-def test_logout_revokes_session(anon_client):
+def test_logout_revokes_session(session, anon_client):
     login = anon_client.post(
         "/api/auth/login", json={"email": DEMO_EMAIL, "password": DEMO_PASSWORD}
     )

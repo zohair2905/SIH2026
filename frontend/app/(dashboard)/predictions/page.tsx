@@ -25,6 +25,7 @@ import {
 } from "recharts";
 
 import { PageHeading } from "@/components/layout/page-heading";
+import { OfflineSampleNotice } from "@/components/ui/offline-sample-notice";
 import { Panel } from "@/components/ui/panel";
 import { StatCard } from "@/components/ui/stat-card";
 import { ConfidenceChip, ScoreChip } from "@/components/ui/score-chip";
@@ -55,6 +56,8 @@ export default function PredictionsPage() {
           <RefreshCw className="size-4" />
         </button>
       </PageHeading>
+
+      <OfflineSampleNotice />
 
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <StatCard
