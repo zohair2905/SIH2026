@@ -203,7 +203,7 @@ export interface PredictionLocation {
   atm_recent_activity: number | null;
   synthetic_location_data: boolean;
   evidence: {
-    top_factors?: string[];
+    top_factors?: HeatmapEvidenceFactor[];
     driver?: string;
     heuristic?: boolean;
     [key: string]: unknown;
