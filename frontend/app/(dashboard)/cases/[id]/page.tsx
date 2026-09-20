@@ -587,8 +587,8 @@ export default function CaseDetailsPage() {
                 <div className="space-y-3">
                   {(top?.evidence.top_factors?.length ? top.evidence.top_factors : []).map(
                     (factor) => (
-                      <div key={factor} className="flex items-center justify-between">
-                        <span className="text-sm text-muted-foreground">{factor}</span>
+                      <div key={factor.feature} className="flex items-center justify-between">
+                        <span className="text-sm text-muted-foreground">{factor.label}</span>
                         <span className="text-xs font-semibold text-risk-high">
                           Contributing
                         </span>
