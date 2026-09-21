@@ -5,3 +5,4 @@ __pycache__/
 .pytest_cache/
 .DS_Store
 ml/*.joblib
+!ml/rf_baseline_model.joblib
