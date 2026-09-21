@@ -426,8 +426,10 @@ export default function CaseDetailsPage() {
                       {top.atm_id} ({top.city ?? "—"})
                     </h3>
                     <p className="mt-1 text-sm text-muted-foreground">
-                      {prediction?.model_name} {prediction?.model_version}.{" "}
-                      {prediction?.note}
+                      {top.atm_id} is currently assessed as a high-risk
+                      potential cash-out location. The predicted withdrawal
+                      window indicates a potential near-term threat associated
+                      with this case.
                     </p>
                   </div>
                 </div>
