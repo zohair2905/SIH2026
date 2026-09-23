@@ -1,0 +1,58 @@
+import type { AuditLog } from "@/types";
+
+export const initialLogs: AuditLog[] = [
+  {
+    id: "AUD-2026-0916-001",
+    date: "16 Sep 2026, 15:12",
+    user: "Admin Officer",
+    action: "LOGIN",
+    target: "System",
+    status: "Success",
+    ip: "10.24.18.21",
+  },
+  {
+    id: "AUD-2026-0916-002",
+    date: "16 Sep 2026, 14:48",
+    user: "Insp. A. Patil",
+    action: "VIEW CASE",
+    target: "CC-2026-4378",
+    status: "Success",
+    ip: "10.24.18.35",
+  },
+  {
+    id: "AUD-2026-0916-003",
+    date: "16 Sep 2026, 14:32",
+    user: "PSI R. Singh",
+    action: "ACKNOWLEDGE ALERT",
+    target: "ALT-2026-006",
+    status: "Success",
+    ip: "10.24.18.42",
+  },
+  {
+    id: "AUD-2026-0916-004",
+    date: "16 Sep 2026, 13:55",
+    user: "S. Kulkarni",
+    action: "VIEW GIS",
+    target: "Pune Risk Map",
+    status: "Success",
+    ip: "10.24.18.51",
+  },
+  {
+    id: "AUD-2026-0916-005",
+    date: "16 Sep 2026, 12:40",
+    user: "N. Deshmukh",
+    action: "DOWNLOAD REPORT",
+    target: "RPT-2026-0914",
+    status: "Success",
+    ip: "10.24.18.67",
+  },
+  {
+    id: "AUD-2026-0916-006",
+    date: "16 Sep 2026, 11:25",
+    user: "Unknown User",
+    action: "LOGIN",
+    target: "System",
+    status: "Failed",
+    ip: "172.16.44.19",
+  },
+];
